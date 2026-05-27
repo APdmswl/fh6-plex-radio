@@ -4,6 +4,8 @@ Forza Horizon 6에서 Plex 음악을 인게임 라디오처럼 들을 수 있게
 
 영어 README: [README.md](README.md)
 
+이 프로젝트는 g0ldyy의 [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)를 기반으로 합니다.
+
 ![FH6 Plex Radio 대시보드](assets/dashboard-redacted.png)
 
 ![FH6 Plex Radio 인게임 오버레이](assets/radio-overlay.png)

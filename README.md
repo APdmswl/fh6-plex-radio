@@ -2,6 +2,9 @@
 
 Korean README: [README.ko.md](README.ko.md)
 
+Based on [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)
+by g0ldyy.
+
 Plex-focused in-game radio integration for Forza Horizon 6. This project is a
 modified version of FH6 Universal Radio by g0ldyy, adapted to use a local web
 dashboard for Plex library, artist, album, and playlist playback.
