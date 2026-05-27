@@ -98,6 +98,13 @@ on the bundled version.dll because of how the mod hooks into the game.
 If yours yeets the file, add the FH6 folder to its exclusions
 list and re-extract.
 
+Plex playback is decoded through ffmpeg. This archive does not bundle
+ffmpeg, so install it separately. Either put ffmpeg.exe on PATH or enter
+the full path in Settings > Plex > ffmpeg path. Portable ffmpeg works
+fine, for example:
+
+    E:\ffmpeg\bin\ffmpeg.exe
+
 Once the files are in place, launch the game and head into
 Settings -> Audio. Two switches matter:
 
@@ -121,7 +128,9 @@ With the game running, open the local dashboard:
 Enter your Plex server URL and token, then hit Load. Pick a music
 library, artist, album, or audio playlist, then Save & Play. The stream
 is decoded through ffmpeg, so either keep ffmpeg on PATH or set its full
-path from Settings > Plex.
+path from Settings > Plex. If ffmpeg is missing or the path is wrong,
+Plex tracks may fail, skip immediately, or stop after a short burst of
+audio.
 
 Edits save the moment you change them -- no need to bounce the game.
 Do not redistribute your private Plex token, runtime config, cookies, or logs.

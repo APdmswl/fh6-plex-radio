@@ -28,11 +28,12 @@ install and use it at your own risk.
 
 1. Close Forza Horizon 6.
 2. Download a release archive.
-3. Extract the archive into the game install folder next to
+3. Install ffmpeg separately, or keep the full path to `ffmpeg.exe` ready.
+4. Extract the archive into the game install folder next to
    `forzahorizon6.exe`.
-4. Launch the game.
-5. In Audio settings, set `Radio DJ = Off` and `Streamer Mode = On`.
-6. Open `http://localhost:8420` and configure Plex.
+5. Launch the game.
+6. In Audio settings, set `Radio DJ = Off` and `Streamer Mode = On`.
+7. Open `http://localhost:8420` and configure Plex.
 
 ## Plex Setup
 
@@ -41,10 +42,29 @@ The dashboard asks for:
 - Plex server URL, for example `https://your-plex.example.com`
 - Plex token
 - music library, artist, album, or playlist
-- optional ffmpeg path
+- ffmpeg path, unless `ffmpeg.exe` is already available on `PATH`
 
 Do not commit your real Plex token, private config, cookies, or logs. Runtime
 config belongs in the game folder under `fh6-radio/config.toml`.
+
+## FFmpeg
+
+Plex playback is decoded through ffmpeg. The release zip does not bundle
+ffmpeg, so install it separately.
+
+Either:
+
+- add the folder containing `ffmpeg.exe` to your Windows `PATH`, or
+- enter the full path in the dashboard under Settings > Plex > ffmpeg path.
+
+Portable ffmpeg works fine. Example:
+
+```text
+E:\ffmpeg\bin\ffmpeg.exe
+```
+
+If ffmpeg is missing or the path is wrong, Plex tracks may fail, skip
+immediately, or stop after a short burst of audio.
 
 ## Build
 

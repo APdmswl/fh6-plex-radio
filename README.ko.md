@@ -25,10 +25,11 @@ Forza Horizon 6에서 Plex 음악을 인게임 라디오처럼 들을 수 있게
 
 1. Forza Horizon 6를 종료합니다.
 2. 릴리즈 압축 파일을 다운로드합니다.
-3. 압축 파일 내용을 `forzahorizon6.exe`가 있는 게임 설치 폴더에 풉니다.
-4. 게임을 실행합니다.
-5. 게임 오디오 설정에서 `Radio DJ = Off`, `Streamer Mode = On`으로 설정합니다.
-6. `http://localhost:8420`을 열고 Plex 설정을 입력합니다.
+3. ffmpeg를 따로 설치하거나, `ffmpeg.exe`의 전체 경로를 준비합니다.
+4. 압축 파일 내용을 `forzahorizon6.exe`가 있는 게임 설치 폴더에 풉니다.
+5. 게임을 실행합니다.
+6. 게임 오디오 설정에서 `Radio DJ = Off`, `Streamer Mode = On`으로 설정합니다.
+7. `http://localhost:8420`을 열고 Plex 설정을 입력합니다.
 
 Xbox 앱 설치 경로 예시는 보통 다음과 비슷합니다.
 
@@ -43,9 +44,26 @@ C:\XboxGames\Forza Horizon 6\Content
 - Plex 서버 URL, 예: `https://your-plex.example.com`
 - Plex 토큰
 - 음악 라이브러리, 아티스트, 앨범 또는 플레이리스트
-- 선택 사항: ffmpeg 경로
+- `ffmpeg.exe`가 Windows `PATH`에 없으면 ffmpeg 경로
 
 실제 Plex 토큰, 개인 설정 파일, 쿠키, 로그는 절대 GitHub에 올리지 마세요. 런타임 설정은 게임 폴더의 `fh6-radio/config.toml`에 저장됩니다.
+
+## FFmpeg
+
+Plex 재생은 ffmpeg를 통해 디코딩됩니다. 릴리즈 zip에는 ffmpeg가 포함되어 있지 않으므로 별도로 설치해야 합니다.
+
+둘 중 하나로 설정하면 됩니다.
+
+- `ffmpeg.exe`가 들어있는 폴더를 Windows `PATH`에 추가
+- 대시보드의 Settings > Plex > ffmpeg path에 전체 경로 입력
+
+포터블 ffmpeg도 사용할 수 있습니다. 예시:
+
+```text
+E:\ffmpeg\bin\ffmpeg.exe
+```
+
+ffmpeg가 없거나 경로가 틀리면 Plex 트랙이 바로 넘어가거나, 아주 잠깐 재생된 뒤 멈출 수 있습니다.
 
 ## 빌드
 

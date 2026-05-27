@@ -25,5 +25,6 @@ Summary of modifications:
 - Updated packaging and install scripts to include legal/compliance files.
 - Prepared public GitHub-facing documentation and sanitized default Plex URLs.
 - Documented that Codex 5.5 model was used as an AI development assistant.
+- Documented ffmpeg as an external requirement for Plex playback.
 
 No warranty is provided. See LICENSE for the full GPLv3 terms.
