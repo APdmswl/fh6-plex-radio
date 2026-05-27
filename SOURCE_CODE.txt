@@ -1,0 +1,46 @@
+Corresponding Source Information
+================================
+
+This binary distribution is intended to be accompanied by its Corresponding
+Source as required by the GNU General Public License version 3.
+
+Included source archive:
+CORRESPONDING_SOURCE.zip
+
+The source archive is generated from this modified source tree at build time.
+It includes the C++ source, dashboard source, build scripts, install scripts,
+configuration templates, GPLv3 license text, notices, and third-party headers
+used to build the distributed version.dll.
+
+Original upstream project:
+FH6 Universal Radio by g0ldyy
+https://github.com/g0ldyy/fh6-universal-radio
+
+Modified distribution:
+FH6 Plex Radio
+
+Build instructions:
+1. Install Visual Studio 2022 or newer with the Desktop development with C++
+   workload.
+2. From the source tree, run:
+      powershell -ExecutionPolicy Bypass -File .\scripts\get-deps.ps1
+      powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
+3. The build output is staged in dist\.
+
+Installation information:
+Install by copying the contents of dist\ into the folder that contains
+forzahorizon6.exe, then launch the game. No cryptographic keys, authorization
+steps, or other technical restrictions are required by this mod to install and
+run a modified build. Game files owned by Microsoft, Xbox Game Studios,
+Playground Games, Turn 10 Studios, or Forza are not part of this source
+distribution.
+
+Private data not included:
+Plex tokens, Plex media, local configuration secrets, and user-specific logs
+are not included in the source archive.
+
+Redistribution note:
+If you redistribute a binary build, keep LICENSE, NOTICE.txt, CHANGES.txt,
+THIRD_PARTY_NOTICES.txt, SOURCE_CODE.txt, and CORRESPONDING_SOURCE.zip with
+the binary, or provide the complete Corresponding Source through another GPLv3
+compliant method.

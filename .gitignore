@@ -1,0 +1,37 @@
+# Build and staging output
+/build/
+/dist/
+/out/
+/release/
+*.dll
+*.exe
+*.exp
+*.lib
+*.obj
+*.pdb
+*.iobj
+*.ipdb
+*.tlog
+*.zip
+
+# Local IDE and tool state
+.vs/
+.vscode/
+*.user
+*.suo
+*.VC.db
+
+# Runtime/user data
+fh6-radio/
+config.toml
+*.local.toml
+*.bak
+*.log
+*.tmp
+cookies.txt
+
+# Downloaded by scripts\get-deps.ps1
+third_party/
+
+# Dependency directories
+node_modules/

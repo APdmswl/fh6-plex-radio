@@ -1,0 +1,22 @@
+FH6 Plex Radio Notice
+=====================
+
+This distribution is a modified version of FH6 Universal Radio.
+
+Original project: FH6 Universal Radio
+Original author/maintainer attribution: g0ldyy
+Original source: https://github.com/g0ldyy/fh6-universal-radio
+License: GNU General Public License v3.0; see LICENSE.
+
+Modification notice:
+This build was modified on 2026-05-28 for Plex-focused playback,
+configuration, packaging, and dashboard behavior.
+
+Additional compliance files:
+- CHANGES.txt: prominent modification notice.
+- SOURCE_CODE.txt: corresponding source and install information.
+- THIRD_PARTY_NOTICES.txt: bundled third-party component notices.
+- CORRESPONDING_SOURCE.zip: generated source archive in binary builds.
+
+This notice is intentionally limited to attribution, license, and
+modification information. Extra promotional links are not included.

@@ -1,0 +1,29 @@
+FH6 Plex Radio Change Notice
+============================
+
+This file is a prominent modification notice for GPLv3 distribution.
+
+Base project:
+FH6 Universal Radio by g0ldyy
+https://github.com/g0ldyy/fh6-universal-radio
+
+Modified project:
+FH6 Plex Radio
+
+Modification date:
+2026-05-28
+
+Summary of modifications:
+- Focused the dashboard and runtime configuration on Plex playback.
+- Added Plex library, artist, album, and playlist selection.
+- Added Plex token/server configuration through the local dashboard.
+- Added optional dashboard auto-open behavior on game start.
+- Restored ffmpeg-based Plex decoding path for more stable playback.
+- Increased the default audio ring buffer from 4 MB to 16 MB.
+- Removed local-file and YouTube Music controls from the visible dashboard.
+- Added attribution, source-code, modification, and third-party notices.
+- Updated packaging and install scripts to include legal/compliance files.
+- Prepared public GitHub-facing documentation and sanitized default Plex URLs.
+- Documented that Codex 5.5 model was used as an AI development assistant.
+
+No warranty is provided. See LICENSE for the full GPLv3 terms.
