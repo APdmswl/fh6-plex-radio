@@ -1,10 +1,13 @@
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/radio_discovery.hpp"
+#include "fh6/audio_source.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/log.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace fh6::fmod_bridge {
 
@@ -25,9 +28,16 @@ constexpr int kStaleTickThreshold = 50;
 constexpr const char* kTargetSoundName = "HZ6_R9_PeterBroderick_EyesClosedandTraveling";
 } // namespace
 
-ControlLoop::ControlLoop(DSPBridge& bridge, const PEImage& img, float configured_gain)
-    : bridge_{bridge}, img_{img}, configured_gain_{configured_gain},
+ControlLoop::ControlLoop(DSPBridge& bridge, const PEImage& img, PlaybackConfig initial_playback,
+                         float configured_gain)
+    : bridge_{bridge}, img_{img}, configured_gain_{configured_gain}, game_state_{img},
+      playback_opts_{std::make_shared<const PlaybackConfig>(std::move(initial_playback))},
       thread_{[this](const std::stop_token& tok) { run(tok); }} {}
+
+void ControlLoop::push_playback_options(PlaybackConfig opts) {
+    playback_opts_.store(std::make_shared<const PlaybackConfig>(std::move(opts)),
+                         std::memory_order_release);
+}
 
 ControlLoop::~ControlLoop() {
     thread_.request_stop();
@@ -106,6 +116,8 @@ void ControlLoop::run(const std::stop_token& tok) {
         } else {
             stale_ticks_ = 0;
         }
+
+        run_playback_state_machines(std::chrono::steady_clock::now());
         prev_calls_ = c;
 
         const float target = [this, active] {
@@ -167,6 +179,70 @@ void ControlLoop::recover_stale_dsp() noexcept {
         log::info(R"([ctrl] DSP stale; recovered onto RadioStreamFmod @0x{:X} SoundName="{}")",
                   reinterpret_cast<uintptr_t>(chosen->radio_stream), chosen->sound_name);
     }
+}
+
+void ControlLoop::run_playback_state_machines(time_point now) noexcept {
+    using namespace std::chrono_literals;
+    constexpr auto kQuickSkipWindow     = 1000ms;
+    constexpr auto kCommandCooldown     = 1500ms;
+    constexpr auto kRaceStartDebounce   = 45s;
+    constexpr auto kRaceRestartDebounce = 5s;
+
+    auto opts = playback_opts_.load(std::memory_order_acquire);
+    if (!opts) return;
+
+    auto* active = bridge_.manager().active();
+    if (!active) {
+        prev_r10_ = prev_race_ = prev_race_restart_ = false;
+        quick_skip_armed_ = false;
+        return;
+    }
+
+    const auto game = game_state_.read();
+    const bool r10  = game.on_target_station;
+    auto& ring      = bridge_.manager().ring();
+
+    const bool race_edge_in    = game.race_active && !prev_race_;
+    const bool restart_edge_in = game.race_restart && !prev_race_restart_;
+    const bool race_event      = (race_edge_in || restart_edge_in) && r10;
+    const auto race_debounce   = restart_edge_in ? kRaceRestartDebounce : kRaceStartDebounce;
+    if (race_event && now - last_race_event_ >= race_debounce &&
+        now - last_skip_cmd_ >= kCommandCooldown) {
+        const auto& mode    = opts->race_start_playback;
+        const char* outcome = "keeping current position";
+        bool fired          = false;
+        if (mode == "next") {
+            fired   = active->skip_next();
+            outcome = fired ? "advanced to next track" : "could not advance queue";
+        } else if (mode == "restart") {
+            fired   = active->restart_current();
+            outcome = fired ? "restarted current track" : "could not restart current track";
+        }
+        if (fired) {
+            ring.drain();
+            last_skip_cmd_ = now;
+        }
+        last_race_event_ = now;
+        log::info("[ctrl] race {} -- {}", restart_edge_in ? "restarted" : "started", outcome);
+    }
+    prev_race_         = game.race_active;
+    prev_race_restart_ = game.race_restart;
+
+    if (prev_r10_ && !r10) {
+        last_r10_off_ = now;
+        if (opts->quick_station_skip) quick_skip_armed_ = true;
+    } else if (!prev_r10_ && r10) {
+        if (quick_skip_armed_ && now - last_r10_off_ <= kQuickSkipWindow &&
+            now - last_skip_cmd_ >= kCommandCooldown) {
+            if (active->skip_next()) {
+                ring.drain();
+                last_skip_cmd_ = now;
+                log::info("[ctrl] quick station return -- advanced to next track");
+            }
+        }
+        quick_skip_armed_ = false;
+    }
+    prev_r10_ = r10;
 }
 
 void ControlLoop::push_metadata() noexcept {

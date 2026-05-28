@@ -146,7 +146,8 @@ void run_bridge(HMODULE self) noexcept {
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
     if (fns.ready())
-        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.audio.output_gain);
+        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.playback,
+                                                          cfg.audio.output_gain);
 
     store.on_change([&bridge, &mgr, sync_sources, ctrl_ptr = ctrl.get()](const Config& c) {
         sync_sources(c);
@@ -158,6 +159,7 @@ void run_bridge(HMODULE self) noexcept {
         // the bridge value back to its own cached target on the next tick.
         bridge.set_gain(c.audio.output_gain);
         if (ctrl_ptr) ctrl_ptr->set_configured_gain(c.audio.output_gain);
+        if (ctrl_ptr) ctrl_ptr->push_playback_options(c.playback);
         if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
             local->set_shuffle(c.local_files.shuffle);
             local->set_directory(c.local_files.music_dir, c.local_files.recursive);

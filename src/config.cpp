@@ -93,6 +93,15 @@ Config load_config(const std::filesystem::path& path) {
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
 
+    const auto& pb = section(root, "playback");
+    {
+        auto rs = pick<std::string>(pb, "race_start_playback", cfg.playback.race_start_playback);
+        if (rs == "next" || rs == "restart" || rs == "ignore")
+            cfg.playback.race_start_playback = std::move(rs);
+    }
+    cfg.playback.quick_station_skip =
+        pick<bool>(pb, "quick_station_skip", cfg.playback.quick_station_skip);
+
     return cfg;
 }
 
@@ -207,6 +216,10 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
 
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);
+
+    e.header("playback");
+    e.kv("race_start_playback", cfg.playback.race_start_playback);
+    e.kv("quick_station_skip", cfg.playback.quick_station_skip);
 
     auto tmp  = path;
     tmp      += ".tmp";

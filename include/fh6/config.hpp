@@ -6,6 +6,13 @@
 
 namespace fh6 {
 
+struct PlaybackConfig {
+    // "next" | "restart" | "ignore". Plex defaults this to ignore so races
+    // never advance the queue unless the user opts in.
+    std::string race_start_playback = "ignore";
+    bool quick_station_skip         = false;
+};
+
 struct GeneralConfig {
     uint16_t port               = 8420;
     uint32_t ring_buffer_mb     = 16;
@@ -52,6 +59,7 @@ struct Config {
     YouTubeMusicConfig youtube_music;
     PlexConfig plex;
     AudioConfig audio;
+    PlaybackConfig playback;
 };
 
 // Missing file is fine, defaults are returned.

@@ -197,6 +197,11 @@ json config_to_json(const Config& c) {
          json{
              {"output_gain", c.audio.output_gain},
          }},
+        {"playback",
+         json{
+             {"race_start_playback", c.playback.race_start_playback},
+             {"quick_station_skip", c.playback.quick_station_skip},
+         }},
     };
 }
 
@@ -253,6 +258,13 @@ void apply_patch(Config& c, const json& j) {
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
+    }
+    if (auto it = j.find("playback"); it != j.end()) {
+        auto rs = pull<std::string>(*it, "race_start_playback", c.playback.race_start_playback);
+        if (rs == "next" || rs == "restart" || rs == "ignore")
+            c.playback.race_start_playback = std::move(rs);
+        c.playback.quick_station_skip =
+            pull(*it, "quick_station_skip", c.playback.quick_station_skip);
     }
 }
 

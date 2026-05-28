@@ -1071,6 +1071,31 @@ void PlexSource::pause() {
     state_.store(PlaybackState::paused, std::memory_order_release);
 }
 
+bool PlexSource::restart_current() {
+    std::scoped_lock lk{mu_};
+    if (queue_.empty() && !refresh_catalog_locked()) return false;
+    if (queue_.empty()) return false;
+    consecutive_failed_ = 0;
+    start_pipe_locked();
+    if (!pipe_) return false;
+    state_.store(PlaybackState::playing, std::memory_order_release);
+    return true;
+}
+
+bool PlexSource::skip_next() {
+    std::scoped_lock lk{mu_};
+    if (queue_.empty() && !refresh_catalog_locked()) return false;
+    if (queue_.empty()) return false;
+    consecutive_failed_ = 0;
+    const auto n = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
+    queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
+    start_pipe_locked();
+    if (!pipe_) return false;
+    state_.store(PlaybackState::playing, std::memory_order_release);
+    return true;
+}
+
 void PlexSource::stop() {
     std::scoped_lock lk{mu_};
     stop_pipe_locked();
@@ -1080,6 +1105,7 @@ void PlexSource::next() {
     std::scoped_lock lk{mu_};
     if (queue_.empty() && !refresh_catalog_locked()) return;
     if (queue_.empty()) return;
+    consecutive_failed_ = 0;
     const auto n = static_cast<std::ptrdiff_t>(queue_.size());
     auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
     queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
@@ -1091,6 +1117,7 @@ void PlexSource::previous() {
     std::scoped_lock lk{mu_};
     if (queue_.empty() && !refresh_catalog_locked()) return;
     if (queue_.empty()) return;
+    consecutive_failed_ = 0;
     const auto n = static_cast<std::ptrdiff_t>(queue_.size());
     auto i       = static_cast<std::ptrdiff_t>(queue_idx_) - 1;
     queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);

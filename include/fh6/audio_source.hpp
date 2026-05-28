@@ -7,6 +7,8 @@
 
 namespace fh6 {
 
+struct PlaybackConfig;
+
 struct TrackInfo {
     std::string title;
     std::string artist;
@@ -44,8 +46,13 @@ public:
     virtual void previous() {}
     virtual void seek(uint64_t /*ms*/) {}
 
+    virtual bool skip_next() { next(); return true; }
+    virtual bool restart_current() { return false; }
+
     // Pull PCM into the ring. Sources that push from their own thread no-op.
     virtual void pump(RingBuffer&) {}
+
+    virtual void set_playback_options(const PlaybackConfig& /*opts*/) {}
 
     virtual TrackInfo current_track() const               = 0;
     virtual PlaybackState playback_state() const noexcept = 0;

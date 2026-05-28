@@ -239,6 +239,10 @@ const SCHEMA = [
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],
   ]],
+  ["playback", "Playback", [
+    ["race_start_playback", "Race start", "select", ["ignore", "next", "restart"]],
+    ["quick_station_skip",  "Quick station skip", "checkbox"],
+  ]],
 ];
 
 function field(section, [key, label, type, min, max, step]) {
@@ -248,6 +252,15 @@ function field(section, [key, label, type, min, max, step]) {
     return `<div class="field checkbox">
       <input type="checkbox" id="${id}" data-section="${section}" data-key="${key}" ${cur ? "checked" : ""}>
       <label for="${id}">${label}</label>
+    </div>`;
+  }
+  if (type === "select") {
+    const options = (min || []).map(v =>
+      `<option value="${esc(v)}" ${cur === v ? "selected" : ""}>${esc(v)}</option>`
+    ).join("");
+    return `<div class="field">
+      <label for="${id}">${label}</label>
+      <select id="${id}" data-section="${section}" data-key="${key}">${options}</select>
     </div>`;
   }
   const attrs = type === "number"
