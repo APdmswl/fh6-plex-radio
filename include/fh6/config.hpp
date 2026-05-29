@@ -11,6 +11,7 @@ struct PlaybackConfig {
     // never advance the queue unless the user opts in.
     std::string race_start_playback = "ignore";
     bool quick_station_skip         = false;
+    bool force_stereo_audio         = true;
 };
 
 struct GeneralConfig {

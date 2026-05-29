@@ -5,6 +5,7 @@
 #include "fh6/safe_mem.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace fh6::fmod_bridge {
@@ -41,6 +42,13 @@ constexpr FMODSig kAnchored[] = {
 // Set once at install time so the placeholder sample doesn't end and
 // drop the channel out from under our DSP.
 constexpr uint32_t kFmodLoopNormal = 0x2;
+
+inline float soft_clip(float x) noexcept {
+    constexpr float k = 0.85f;
+    const float a    = std::fabs(x);
+    const float over = std::max(0.0f, a - k) / (1.0f - k);
+    return std::copysign(std::min(a, k) + (1.0f - k) * over / (1.0f + over), x);
+}
 
 // FMOD's `Handle::open` / `Handle::unlock` have no .rdata anchor; we match
 // their (unique) prologues directly.
@@ -315,17 +323,13 @@ bool DSPBridge::retarget_to_target() noexcept {
 // (miniaudio / ffmpeg resample upstream), which is FMOD's master rate, so
 // the callback is a straight int16 -> float conversion with gain.
 uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, float* out_buf,
-                                            uint32_t length, int32_t in_channels,
+                                            uint32_t length, int32_t /*in_channels*/,
                                             int32_t* out_channels) {
     auto* b = g_bridge;
     if (!b || !out_buf) return 0;
     const DSPMode m = b->mode();
 
-    // Use only what FMOD allocated: out_buf is pre-sized by FMOD, writing
-    // more channels than requested is a heap overflow that crashes the mixer
-    // a few seconds later. If FMOD wants mono, downmix our stereo.
-    int32_t out_ch = in_channels > 0 ? in_channels : 2;
-    if (out_channels && *out_channels > 0) out_ch = *out_channels;
+    const int32_t out_ch = b->force_stereo_audio() ? 2 : 1;
     if (out_channels) *out_channels = out_ch;
     const std::size_t total = static_cast<std::size_t>(length) * out_ch;
 
@@ -377,8 +381,8 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
         for (uint32_t f = 0; f < got_frames; ++f) {
             const float fl = scratch[f * 2 + 0] * scale;
             const float fr = scratch[f * 2 + 1] * scale;
-            const float L  = fl > 1.0f ? 1.0f : (fl < -1.0f ? -1.0f : fl);
-            const float R  = fr > 1.0f ? 1.0f : (fr < -1.0f ? -1.0f : fr);
+            const float L  = soft_clip(fl);
+            const float R  = soft_clip(fr);
 
             float* o = out_buf + static_cast<std::size_t>(produced + f) * out_ch;
             if (out_ch == 1) {

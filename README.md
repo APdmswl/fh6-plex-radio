@@ -2,6 +2,8 @@
 
 Korean README: [README.ko.md](README.ko.md)
 
+Current version: `v0.1.1`
+
 Based on [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)
 by g0ldyy.
 
@@ -26,6 +28,9 @@ dashboard for Plex library, artist, album, and playlist playback.
 
 This is experimental and may break after game updates. Keep a backup of your
 install and use it at your own risk.
+
+`v0.1.1` merges upstream radio stability improvements, adds forced stereo DSP
+output, and refreshes in-game HUD metadata after radio retunes.
 
 ## Install
 

@@ -101,6 +101,8 @@ Config load_config(const std::filesystem::path& path) {
     }
     cfg.playback.quick_station_skip =
         pick<bool>(pb, "quick_station_skip", cfg.playback.quick_station_skip);
+    cfg.playback.force_stereo_audio =
+        pick<bool>(pb, "force_stereo_audio", cfg.playback.force_stereo_audio);
 
     return cfg;
 }
@@ -220,6 +222,7 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.header("playback");
     e.kv("race_start_playback", cfg.playback.race_start_playback);
     e.kv("quick_station_skip", cfg.playback.quick_station_skip);
+    e.kv("force_stereo_audio", cfg.playback.force_stereo_audio);
 
     auto tmp  = path;
     tmp      += ".tmp";

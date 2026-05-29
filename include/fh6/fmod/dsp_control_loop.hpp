@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <stop_token>
 #include <thread>
 
@@ -41,16 +42,10 @@ private:
     void push_metadata() noexcept;
     void run_playback_state_machines(time_point now) noexcept;
 
-    // Pick the best RadioInstance from a discovery result, preferring the
-    // target SoundName and optionally filtering to those whose +0x20 holds
-    // a live FMOD channel handle (used by recovery).
-    const RadioInstance* select_instance(const DiscoveryResult& disc,
-                                         bool require_live) const noexcept;
-
-    // Re-discover and switch to an instance with a live channel handle when
-    // our DSP has stopped receiving reads (channel destroyed by FMOD with
-    // no replacement written to +0x20).
-    void recover_stale_dsp() noexcept;
+    bool acquire_target() noexcept;
+    void schedule_target_reacquire(time_point now) noexcept;
+    void pump_target_reacquire(time_point now) noexcept;
+    const RadioInstance* select_instance(const DiscoveryResult& disc) const noexcept;
 
     DSPBridge& bridge_;
     const PEImage& img_;
@@ -58,10 +53,13 @@ private:
     MetadataInjector meta_;
     GameStateProbe game_state_;
     std::uint64_t prev_calls_ = 0;
-    std::uint32_t last_stale_wait_handle_ = 0;
     int stale_ticks_          = 0;
+    time_point last_retune_{};
+    time_point reacquire_until_{};
+    time_point next_reacquire_{};
 
-    std::atomic<std::shared_ptr<const PlaybackConfig>> playback_opts_;
+    mutable std::mutex playback_opts_mtx_;
+    std::shared_ptr<const PlaybackConfig> playback_opts_;
     bool prev_r10_          = false;
     bool prev_race_         = false;
     bool prev_race_restart_ = false;

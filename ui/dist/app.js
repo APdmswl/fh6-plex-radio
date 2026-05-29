@@ -242,6 +242,7 @@ const SCHEMA = [
   ["playback", "Playback", [
     ["race_start_playback", "Race start", "select", ["ignore", "next", "restart"]],
     ["quick_station_skip",  "Quick station skip", "checkbox"],
+    ["force_stereo_audio",  "Force stereo audio", "checkbox"],
   ]],
 ];
 

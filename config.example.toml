@@ -43,3 +43,4 @@ output_gain = 1.0
 [playback]
 race_start_playback = "ignore"    # "next" | "restart" | "ignore"
 quick_station_skip  = false       # tune away and back within 1s to skip
+force_stereo_audio  = true        # force FMOD DSP output to stereo

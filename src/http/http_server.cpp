@@ -201,6 +201,7 @@ json config_to_json(const Config& c) {
          json{
              {"race_start_playback", c.playback.race_start_playback},
              {"quick_station_skip", c.playback.quick_station_skip},
+             {"force_stereo_audio", c.playback.force_stereo_audio},
          }},
     };
 }
@@ -265,6 +266,8 @@ void apply_patch(Config& c, const json& j) {
             c.playback.race_start_playback = std::move(rs);
         c.playback.quick_station_skip =
             pull(*it, "quick_station_skip", c.playback.quick_station_skip);
+        c.playback.force_stereo_audio =
+            pull(*it, "force_stereo_audio", c.playback.force_stereo_audio);
     }
 }
 

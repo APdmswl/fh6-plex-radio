@@ -10,8 +10,11 @@ https://github.com/g0ldyy/fh6-universal-radio
 Modified project:
 FH6 Plex Radio
 
+Modified version:
+v0.1.1
+
 Modification date:
-2026-05-28
+2026-05-29
 
 Summary of modifications:
 - Focused the dashboard and runtime configuration on Plex playback.
@@ -28,5 +31,9 @@ Summary of modifications:
 - Documented ffmpeg as an external requirement for Plex playback.
 - Merged upstream game-state playback handling for race/quick-station events,
   with Plex defaults set to avoid automatic queue advances unless enabled.
+- Merged upstream radio stability handling for stale FMOD channels:
+  auto-retune recovery, forced stereo DSP output, and soft audio clipping.
+- Added post-retune radio rediscovery so in-game HUD metadata follows the
+  newly-created RadioStreamFmod instead of writing to an old sample slot.
 
 No warranty is provided. See LICENSE for the full GPLv3 terms.
