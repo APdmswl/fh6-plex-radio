@@ -11,7 +11,7 @@ Modified project:
 FH6 Plex Radio
 
 Modified version:
-v0.1.1
+v0.1.2
 
 Modification date:
 2026-05-29
@@ -35,5 +35,7 @@ Summary of modifications:
   auto-retune recovery, forced stereo DSP output, and soft audio clipping.
 - Added post-retune radio rediscovery so in-game HUD metadata follows the
   newly-created RadioStreamFmod instead of writing to an old sample slot.
+- Improved Plex connection errors so WinHTTP failures include error codes and
+  clearer local HTTPS/IP certificate hints in logs and the dashboard.
 
 No warranty is provided. See LICENSE for the full GPLv3 terms.

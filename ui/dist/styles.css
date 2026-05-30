@@ -265,6 +265,10 @@ button.ghost:hover { color: var(--text); background: var(--panel-2); }
   min-height: 20px;
 }
 
+.plex-status.warn { color: var(--warn); }
+
+.plex-status.err { color: var(--danger); }
+
 input[type="range"] {
   -webkit-appearance: none; appearance: none;
   height: 4px; background: var(--line); border-radius: 4px; outline: none;

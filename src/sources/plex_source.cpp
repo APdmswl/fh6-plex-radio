@@ -130,6 +130,22 @@ std::string win32_message(DWORD ec) {
                                     FORMAT_MESSAGE_IGNORE_INSERTS,
                                 nullptr, ec, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                                 (LPWSTR)&raw, 0, nullptr);
+    HMODULE winhttp = nullptr;
+    bool free_winhttp = false;
+    if ((!raw || !len) && (winhttp = GetModuleHandleW(L"winhttp.dll")) == nullptr) {
+        winhttp = LoadLibraryW(L"winhttp.dll");
+        free_winhttp = winhttp != nullptr;
+    }
+    if ((!raw || !len) && winhttp) {
+        if (raw) {
+            LocalFree(raw);
+            raw = nullptr;
+        }
+        len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_HMODULE |
+                                 FORMAT_MESSAGE_IGNORE_INSERTS,
+                             winhttp, ec, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                             (LPWSTR)&raw, 0, nullptr);
+    }
     std::string msg;
     if (raw && len) {
         while (len && (raw[len - 1] == L'\r' || raw[len - 1] == L'\n' || raw[len - 1] == L' '))
@@ -137,7 +153,78 @@ std::string win32_message(DWORD ec) {
         msg = narrow({raw, len});
     }
     if (raw) LocalFree(raw);
+    if (free_winhttp) FreeLibrary(winhttp);
     return msg.empty() ? "unknown" : msg;
+}
+
+std::string win32_error(DWORD ec) {
+    return "ec=" + std::to_string(ec) + " (" + win32_message(ec) + ")";
+}
+
+bool is_ipv4_literal(std::string_view host) {
+    if (host.empty() || host.find('.') == std::string_view::npos) return false;
+    return std::ranges::all_of(host, [](unsigned char c) {
+        return std::isdigit(c) != 0 || c == '.';
+    });
+}
+
+std::string local_http_url(std::string_view host, INTERNET_PORT port) {
+    std::string out = "http://";
+    out += host;
+    if (port != INTERNET_DEFAULT_HTTP_PORT) {
+        out += ":";
+        out += std::to_string(port);
+    }
+    return out;
+}
+
+std::string winhttp_hint(DWORD ec, INTERNET_SCHEME scheme, std::wstring_view host_w,
+                         INTERNET_PORT port) {
+    const auto host = narrow(host_w);
+    const bool https = scheme == INTERNET_SCHEME_HTTPS;
+    const bool ip_host = is_ipv4_literal(host);
+    if (https && ip_host) {
+        return " -- HTTPS to an IP address can fail when the Plex certificate is not trusted "
+               "by Windows or does not match the IP. For a local Plex server, try " +
+               local_http_url(host, port) + ".";
+    }
+    if (https && ec == ERROR_WINHTTP_SECURE_FAILURE) {
+        return " -- Windows rejected the HTTPS certificate. For local Plex, use HTTP or a "
+               "trusted HTTPS hostname.";
+    }
+    if (ec == ERROR_WINHTTP_CANNOT_CONNECT || ec == ERROR_WINHTTP_CONNECTION_ERROR) {
+        return " -- could not connect to Plex. Check the server URL and port; local Plex "
+               "usually uses http://<server>:32400.";
+    }
+    if (ec == ERROR_WINHTTP_TIMEOUT) {
+        return " -- connection timed out. Check that the Plex server is reachable from this PC.";
+    }
+    if (ec == ERROR_WINHTTP_NAME_NOT_RESOLVED) {
+        return " -- hostname was not resolved. Check the Plex server URL.";
+    }
+    return {};
+}
+
+std::string winhttp_failure(std::string_view op, DWORD ec, INTERNET_SCHEME scheme,
+                            std::wstring_view host, INTERNET_PORT port) {
+    std::string out{op};
+    out += " failed: ";
+    out += win32_error(ec);
+    out += winhttp_hint(ec, scheme, host, port);
+    return out;
+}
+
+std::string plex_http_error(DWORD status) {
+    if (status == 401) {
+        return "Plex HTTP 401 -- token was rejected. Use a Plex token for the account "
+               "that can access this server. You can test it with "
+               "/library/sections?X-Plex-Token=YOUR_TOKEN on the same server.";
+    }
+    if (status == 403) {
+        return "Plex HTTP 403 -- token is valid but does not have access to this server "
+               "or library.";
+    }
+    return "Plex HTTP " + std::to_string(status);
 }
 
 std::string describe_launch_failure(const std::wstring& bin, DWORD ec, bool from_config) {
@@ -165,8 +252,7 @@ std::string describe_launch_failure(const std::wstring& bin, DWORD ec, bool from
             break;
     }
 
-    return "ec=" + std::to_string(ec) + " (" + win32_message(ec) + ") tried=" +
-           narrow(bin) + " resolved=" + where + hint;
+    return win32_error(ec) + " tried=" + narrow(bin) + " resolved=" + where + hint;
 }
 
 HANDLE create_kill_on_close_job() {
@@ -269,7 +355,8 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
 
     InternetHandle conn{WinHttpConnect(session, host_name.c_str(), uc.nPort, 0)};
     if (!conn.h) {
-        out.error = "WinHttpConnect failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        out.error = winhttp_failure("WinHttpConnect", ec, uc.nScheme, host_name, uc.nPort);
         return out;
     }
 
@@ -277,7 +364,8 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
     InternetHandle req{WinHttpOpenRequest(conn, L"GET", object.c_str(), nullptr,
                                           WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags)};
     if (!req.h) {
-        out.error = "WinHttpOpenRequest failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        out.error = winhttp_failure("WinHttpOpenRequest", ec, uc.nScheme, host_name, uc.nPort);
         return out;
     }
 
@@ -295,11 +383,14 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
 
     if (!WinHttpSendRequest(req, headers.c_str(), (DWORD)-1L, WINHTTP_NO_REQUEST_DATA, 0, 0,
                             0)) {
-        out.error = "WinHttpSendRequest failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        out.error = winhttp_failure("WinHttpSendRequest", ec, uc.nScheme, host_name, uc.nPort);
         return out;
     }
     if (!WinHttpReceiveResponse(req, nullptr)) {
-        out.error = "WinHttpReceiveResponse failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        out.error = winhttp_failure("WinHttpReceiveResponse", ec, uc.nScheme, host_name,
+                                    uc.nPort);
         return out;
     }
 
@@ -311,7 +402,9 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
     for (;;) {
         DWORD avail = 0;
         if (!WinHttpQueryDataAvailable(req, &avail)) {
-            out.error = "WinHttpQueryDataAvailable failed: " + win32_message(GetLastError());
+            const DWORD ec = GetLastError();
+            out.error = winhttp_failure("WinHttpQueryDataAvailable", ec, uc.nScheme,
+                                        host_name, uc.nPort);
             return out;
         }
         if (avail == 0) break;
@@ -321,7 +414,9 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
         while (total < avail) {
             DWORD got = 0;
             if (!WinHttpReadData(req, chunk.data() + total, avail - total, &got)) {
-                out.error = "WinHttpReadData failed: " + win32_message(GetLastError());
+                const DWORD ec = GetLastError();
+                out.error = winhttp_failure("WinHttpReadData", ec, uc.nScheme, host_name,
+                                            uc.nPort);
                 return out;
             }
             if (got == 0) break;
@@ -331,7 +426,7 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
         out.body += chunk;
     }
     if (out.status < 200 || out.status >= 300) {
-        out.error = "Plex HTTP " + std::to_string(out.status);
+        out.error = plex_http_error(out.status);
     }
     return out;
 }
@@ -373,8 +468,8 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
     object.append(uc.lpszExtraInfo, uc.dwExtraInfoLength);
     if (object.empty()) object = L"/";
 
-    std::error_code ec;
-    std::filesystem::create_directories(out_file.parent_path(), ec);
+    std::error_code fs_ec;
+    std::filesystem::create_directories(out_file.parent_path(), fs_ec);
     std::ofstream os{out_file, std::ios::binary | std::ios::trunc};
     if (!os) {
         error = "Could not create temp audio file: " + out_file.string();
@@ -392,7 +487,8 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
 
     InternetHandle conn{WinHttpConnect(session, host_name.c_str(), uc.nPort, 0)};
     if (!conn.h) {
-        error = "WinHttpConnect failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        error = winhttp_failure("WinHttpConnect", ec, uc.nScheme, host_name, uc.nPort);
         return false;
     }
 
@@ -400,7 +496,8 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
     InternetHandle req{WinHttpOpenRequest(conn, L"GET", object.c_str(), nullptr,
                                           WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags)};
     if (!req.h) {
-        error = "WinHttpOpenRequest failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        error = winhttp_failure("WinHttpOpenRequest", ec, uc.nScheme, host_name, uc.nPort);
         return false;
     }
 
@@ -418,11 +515,14 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
 
     if (!WinHttpSendRequest(req, headers.c_str(), (DWORD)-1L, WINHTTP_NO_REQUEST_DATA, 0, 0,
                             0)) {
-        error = "WinHttpSendRequest failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        error = winhttp_failure("WinHttpSendRequest", ec, uc.nScheme, host_name, uc.nPort);
         return false;
     }
     if (!WinHttpReceiveResponse(req, nullptr)) {
-        error = "WinHttpReceiveResponse failed: " + win32_message(GetLastError());
+        const DWORD ec = GetLastError();
+        error = winhttp_failure("WinHttpReceiveResponse", ec, uc.nScheme, host_name,
+                                uc.nPort);
         return false;
     }
 
@@ -432,7 +532,7 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
                         WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_len,
                         WINHTTP_NO_HEADER_INDEX);
     if (status < 200 || status >= 300) {
-        error = "Plex HTTP " + std::to_string(status);
+        error = plex_http_error(status);
         return false;
     }
 
@@ -440,7 +540,9 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
     for (;;) {
         DWORD avail = 0;
         if (!WinHttpQueryDataAvailable(req, &avail)) {
-            error = "WinHttpQueryDataAvailable failed: " + win32_message(GetLastError());
+            const DWORD ec = GetLastError();
+            error = winhttp_failure("WinHttpQueryDataAvailable", ec, uc.nScheme, host_name,
+                                    uc.nPort);
             return false;
         }
         if (avail == 0) break;
@@ -448,7 +550,9 @@ bool winhttp_download_to_file(const PlexConfig& cfg, std::string path,
             DWORD want = std::min<DWORD>(avail, (DWORD)buf.size());
             DWORD got = 0;
             if (!WinHttpReadData(req, buf.data(), want, &got)) {
-                error = "WinHttpReadData failed: " + win32_message(GetLastError());
+                const DWORD ec = GetLastError();
+                error = winhttp_failure("WinHttpReadData", ec, uc.nScheme, host_name,
+                                        uc.nPort);
                 return false;
             }
             if (got == 0) break;

@@ -2,7 +2,7 @@
 
 Korean README: [README.ko.md](README.ko.md)
 
-Current version: `v0.1.1`
+Current version: `v0.1.2`
 
 Based on [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)
 by g0ldyy.
@@ -29,8 +29,8 @@ dashboard for Plex library, artist, album, and playlist playback.
 This is experimental and may break after game updates. Keep a backup of your
 install and use it at your own risk.
 
-`v0.1.1` merges upstream radio stability improvements, adds forced stereo DSP
-output, and refreshes in-game HUD metadata after radio retunes.
+`v0.1.2` improves Plex connection diagnostics for local server URL, token, and
+WinHTTP certificate failures.
 
 ## Install
 
@@ -54,6 +54,12 @@ The dashboard asks for:
 
 Do not commit your real Plex token, private config, cookies, or logs. Runtime
 config belongs in the game folder under `fh6-radio/config.toml`.
+
+For a local Plex server on your LAN, `http://192.168.x.x:32400` is usually more
+reliable than `https://192.168.x.x:32400`. Windows can reject local HTTPS when
+the certificate is not trusted or does not match the IP address. You can test a
+token directly with `/library/sections?X-Plex-Token=YOUR_TOKEN` on the same
+server URL.
 
 ## FFmpeg
 

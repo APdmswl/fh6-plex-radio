@@ -132,6 +132,15 @@ path from Settings > Plex. If ffmpeg is missing or the path is wrong,
 Plex tracks may fail, skip immediately, or stop after a short burst of
 audio.
 
+For a local Plex server on your LAN, http://192.168.x.x:32400 is usually
+more reliable than https://192.168.x.x:32400. Windows can reject local
+HTTPS when the certificate is not trusted or does not match the IP address.
+You can test a token directly with:
+
+    /library/sections?X-Plex-Token=YOUR_TOKEN
+
+on the same server URL.
+
 Edits save the moment you change them -- no need to bounce the game.
 Do not redistribute your private Plex token, runtime config, cookies, or logs.
 

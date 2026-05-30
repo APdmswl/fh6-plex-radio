@@ -140,10 +140,15 @@ function renderPlexPanel() {
     "No playlist", row => `${row.title}${row.leaf_count ? ` (${row.leaf_count})` : ""}`);
 
   const plex = plexSource();
-  const status = plex
+  const note = plex?.auth_instructions || "";
+  const baseStatus = plex
     ? `${plex.playback_state} - ${plex.auth_state.replace("_", " ")} - ${plex.details?.track_count ?? 0} tracks`
     : "disabled";
-  setText($("#plex-status"), status);
+  const status = note ? `${baseStatus} - ${note}` : baseStatus;
+  const statusEl = $("#plex-status");
+  statusEl.className = "muted plex-status" +
+    (plex?.auth_state === "error" ? " err" : plex?.auth_state === "needs_auth" ? " warn" : "");
+  setText(statusEl, status);
 }
 
 function collectPlexConfig() {
