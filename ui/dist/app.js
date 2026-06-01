@@ -229,6 +229,7 @@ const SCHEMA = [
     ["port",                    "Port",                   "number", 1, 65535],
     ["ring_buffer_mb",          "Ring buffer (MB)",       "number", 1, 64],
     ["open_dashboard_on_start", "Open dashboard on start","checkbox"],
+    ["ffmpeg_path",             "ffmpeg path",            "text"],
   ]],
   ["plex", "Plex", [
     ["enabled",      "Enabled",                "checkbox"],
@@ -247,6 +248,9 @@ const SCHEMA = [
   ["playback", "Playback", [
     ["race_start_playback", "Race start", "select", ["ignore", "next", "restart"]],
     ["quick_station_skip",  "Quick station skip", "checkbox"],
+    ["volume_normalization","Normalize volume", "checkbox"],
+    ["equalizer_enabled",   "Equalizer", "checkbox"],
+    ["equalizer_bands",     "EQ bands", "float-list"],
     ["force_stereo_audio",  "Force stereo audio", "checkbox"],
   ]],
 ];
@@ -267,6 +271,13 @@ function field(section, [key, label, type, min, max, step]) {
     return `<div class="field">
       <label for="${id}">${label}</label>
       <select id="${id}" data-section="${section}" data-key="${key}">${options}</select>
+    </div>`;
+  }
+  if (type === "float-list") {
+    const value = Array.isArray(cur) ? cur.join(", ") : "";
+    return `<div class="field">
+      <label for="${id}">${label}</label>
+      <input id="${id}" type="text" data-section="${section}" data-key="${key}" data-float-list="1" value="${esc(value)}">
     </div>`;
   }
   const attrs = type === "number"
@@ -292,6 +303,7 @@ function collectSettings() {
     (patch[sec] ??= {});
     if (el.type === "checkbox")    patch[sec][key] = el.checked;
     else if (el.type === "number") patch[sec][key] = parseFloat(el.value);
+    else if (el.dataset.floatList)  patch[sec][key] = el.value.split(",").map(v => parseFloat(v.trim()) || 0);
     else                           patch[sec][key] = el.value;
   });
   return patch;

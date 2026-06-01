@@ -78,6 +78,18 @@ void open_dashboard(uint16_t port) noexcept {
     }
 }
 
+PlexConfig effective_plex_config(const Config& c) {
+    auto out = c.plex;
+    if (out.ffmpeg_path.empty()) out.ffmpeg_path = c.general.ffmpeg_path;
+    return out;
+}
+
+YouTubeMusicConfig effective_youtube_config(const Config& c) {
+    auto out = c.youtube_music;
+    if (out.ffmpeg_path.empty()) out.ffmpeg_path = c.general.ffmpeg_path;
+    return out;
+}
+
 } // namespace
 
 void run_bridge(HMODULE self) noexcept {
@@ -122,16 +134,19 @@ void run_bridge(HMODULE self) noexcept {
             mgr.unregister_source("local_files");
         }
         if (c.youtube_music.enabled && !mgr.find("youtube_music")) {
-            auto src = std::make_unique<sources::YouTubeMusicSource>(c.youtube_music);
+            auto src = std::make_unique<sources::YouTubeMusicSource>(effective_youtube_config(c));
+            src->set_playback_options(c.playback);
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
         if (c.plex.enabled) {
             if (auto* plex = dynamic_cast<sources::PlexSource*>(mgr.find("plex"))) {
-                plex->update_config(c.plex);
+                plex->update_config(effective_plex_config(c));
+                plex->set_playback_options(c.playback);
             } else {
-                auto src = std::make_unique<sources::PlexSource>(c.plex);
+                auto src = std::make_unique<sources::PlexSource>(effective_plex_config(c));
+                src->set_playback_options(c.playback);
                 if (src->initialize()) mgr.register_source(std::move(src));
             }
         } else if (mgr.find("plex")) {
@@ -140,6 +155,7 @@ void run_bridge(HMODULE self) noexcept {
     };
 
     sync_sources(cfg);
+    for (auto* s : mgr.sources_snapshot()) s->set_playback_options(cfg.playback);
 
     fmod_bridge::DSPBridge bridge{mgr, fns};
     bridge.set_gain(cfg.audio.output_gain);
@@ -170,6 +186,7 @@ void run_bridge(HMODULE self) noexcept {
                 local->play();
             }
         }
+        for (auto* s : mgr.sources_snapshot()) s->set_playback_options(c.playback);
     });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};

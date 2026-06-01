@@ -11,10 +11,10 @@ Modified project:
 FH6 Plex Radio
 
 Modified version:
-v0.1.2
+v0.1.3
 
 Modification date:
-2026-05-29
+2026-06-01
 
 Summary of modifications:
 - Focused the dashboard and runtime configuration on Plex playback.
@@ -37,5 +37,15 @@ Summary of modifications:
   newly-created RadioStreamFmod instead of writing to an old sample slot.
 - Improved Plex connection errors so WinHTTP failures include error codes and
   clearer local HTTPS/IP certificate hints in logs and the dashboard.
+- Merged selected upstream runtime improvements from FH6 Universal Radio
+  without re-enabling non-Plex dashboard sources.
+- Added shared [general].ffmpeg_path fallback while preserving the existing
+  Plex-specific ffmpeg path override.
+- Added Plex playback options for ffmpeg loudness normalization and 5-band
+  producer-side EQ.
+- Made child process job assignment best-effort so playback can continue when
+  Windows-compatible layers reject AssignProcessToJobObject.
+- Expanded default local-file extension compatibility to match upstream
+  defaults, while keeping the visible dashboard Plex-focused.
 
 No warranty is provided. See LICENSE for the full GPLv3 terms.

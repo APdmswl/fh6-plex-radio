@@ -238,9 +238,9 @@ std::string describe_launch_failure(const std::wstring& bin, DWORD ec, bool from
     switch (ec) {
         case ERROR_FILE_NOT_FOUND:
         case ERROR_PATH_NOT_FOUND:
-            hint = from_config ? " -- the path in [plex].ffmpeg_path does not exist."
+            hint = from_config ? " -- the configured ffmpeg path does not exist."
                                : " -- ffmpeg is not on PATH. Install it or set "
-                                 "[plex].ffmpeg_path in config.toml.";
+                                 "[plex].ffmpeg_path or [general].ffmpeg_path in config.toml.";
             break;
         case ERROR_ACCESS_DENIED:
             hint = " -- likely blocked by antivirus. Whitelist ffmpeg and the game folder.";
@@ -282,12 +282,8 @@ HANDLE spawn_in_job(HANDLE job, const std::wstring& cmd, HANDLE stdin_h, HANDLE 
                         CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi))
         return nullptr;
     if (job && !AssignProcessToJobObject(job, pi.hProcess)) {
-        const DWORD assign_ec = GetLastError();
-        TerminateProcess(pi.hProcess, 1);
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        SetLastError(assign_ec);
-        return nullptr;
+        log::warn("[plex] AssignProcessToJobObject failed ({}); continuing without job containment",
+                  GetLastError());
     }
     ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);
@@ -837,6 +833,11 @@ void PlexSource::update_config(PlexConfig cfg) {
                 std::memory_order_release);
 }
 
+void PlexSource::set_playback_options(const PlaybackConfig& opts) {
+    eq_.set_options(opts.equalizer_enabled, opts.equalizer_bands, 48000.0f);
+    volume_norm_.store(opts.volume_normalization, std::memory_order_release);
+}
+
 void PlexSource::set_error_locked(std::string msg) {
     last_error_ = std::move(msg);
     auth_.store(AuthState::error, std::memory_order_release);
@@ -1119,12 +1120,17 @@ void PlexSource::start_pipe_locked() {
         input_headers = L" -headers ";
         input_headers += quote(L"X-Plex-Token: " + widen(cfg_.token) + L"\r\n");
     }
+    std::wstring filters;
+    if (volume_norm_.load(std::memory_order_acquire)) {
+        filters += L" -af loudnorm=I=-14:TP=-2:LRA=11";
+    }
     std::wstring ff_cmd = quote(ff) +
                           L" -loglevel error -nostdin -reconnect 1 -reconnect_streamed 1 "
                           L"-reconnect_delay_max 5" +
                           input_headers +
                           L" -i " +
                           quote(widen(input_url)) +
+                          filters +
                           L" -vn -f s16le -acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
 
     pipe->proc_ff = spawn_in_job(pipe->job, ff_cmd, nul_in, ff_out_w, err_log);
@@ -1314,11 +1320,16 @@ void PlexSource::pump(RingBuffer& ring) {
         if (writable < 4) break;
         std::size_t want = std::min<std::size_t>(writable, avail);
         if (want > 4096) want = 4096;
-        std::byte buf[4096];
+        want -= want % 4;
+        if (want < 4) break;
+        alignas(16) int16_t buf[2048];
         DWORD got = 0;
         if (!ReadFile(p->read_pipe, buf, (DWORD)want, &got, nullptr) || got == 0) {
             on_eof();
             return;
+        }
+        if (got >= 4 && (got % 4) == 0) {
+            eq_.process(buf, got / 4);
         }
         ring.write(buf, got);
         p->bytes_written += got;

@@ -146,8 +146,8 @@ HANDLE create_kill_on_close_job() {
 }
 
 // Spawn under `job`. CREATE_SUSPENDED + AssignProcessToJobObject + ResumeThread
-// ensures yt-dlp is inside the job before it can spawn deno -- otherwise a
-// fast-starting child could escape into its own process tree.
+// puts yt-dlp inside the job before it can spawn deno on native Windows.
+// Wine/Proton may reject job assignment, so assignment is best-effort there.
 HANDLE spawn_in_job(HANDLE job, const std::wstring& cmd, HANDLE stdin_h, HANDLE stdout_h,
                     HANDLE stderr_h) {
     STARTUPINFOW si{};
@@ -163,14 +163,8 @@ HANDLE spawn_in_job(HANDLE job, const std::wstring& cmd, HANDLE stdin_h, HANDLE 
                         CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi))
         return nullptr;
     if (job && !AssignProcessToJobObject(job, pi.hProcess)) {
-        // Preserve the AssignProcessToJobObject error across the cleanup calls so
-        // the caller's GetLastError() reflects the real cause, not CloseHandle's.
-        const DWORD assign_ec = GetLastError();
-        TerminateProcess(pi.hProcess, 1);
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        SetLastError(assign_ec);
-        return nullptr;
+        log::warn("[yt] AssignProcessToJobObject failed ({}); continuing without job containment",
+                  GetLastError());
     }
     ResumeThread(pi.hThread);
     CloseHandle(pi.hThread);

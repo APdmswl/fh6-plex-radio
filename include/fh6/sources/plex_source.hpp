@@ -2,6 +2,7 @@
 
 #include "fh6/audio_source.hpp"
 #include "fh6/config.hpp"
+#include "fh6/playback_dsp.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -70,6 +71,7 @@ public:
     bool skip_next() override;
     bool restart_current() override;
     void pump(RingBuffer& ring) override;
+    void set_playback_options(const PlaybackConfig& opts) override;
 
     void update_config(PlexConfig cfg);
     bool refresh_catalog();
@@ -125,6 +127,8 @@ private:
     int consecutive_failed_ = 0;
     std::atomic<AuthState> auth_{AuthState::needs_auth};
     std::atomic<PlaybackState> state_{PlaybackState::stopped};
+    EqualizerStage eq_;
+    std::atomic<bool> volume_norm_{false};
 };
 
 } // namespace fh6::sources

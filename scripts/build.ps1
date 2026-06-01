@@ -100,8 +100,9 @@ list and re-extract.
 
 Plex playback is decoded through ffmpeg. This archive does not bundle
 ffmpeg, so install it separately. Either put ffmpeg.exe on PATH or enter
-the full path in Settings > Plex > ffmpeg path. Portable ffmpeg works
-fine, for example:
+the full path in Settings > General > ffmpeg path. Settings > Plex >
+ffmpeg path can still be used as a Plex-specific override. Portable ffmpeg
+works fine, for example:
 
     E:\ffmpeg\bin\ffmpeg.exe
 
@@ -128,7 +129,7 @@ With the game running, open the local dashboard:
 Enter your Plex server URL and token, then hit Load. Pick a music
 library, artist, album, or audio playlist, then Save & Play. The stream
 is decoded through ffmpeg, so either keep ffmpeg on PATH or set its full
-path from Settings > Plex. If ffmpeg is missing or the path is wrong,
+path from Settings > General. If ffmpeg is missing or the path is wrong,
 Plex tracks may fail, skip immediately, or stop after a short burst of
 audio.
 

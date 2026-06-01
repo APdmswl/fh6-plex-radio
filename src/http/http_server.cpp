@@ -164,6 +164,7 @@ json config_to_json(const Config& c) {
              {"open_dashboard_on_start", c.general.open_dashboard_on_start},
              {"default_source", c.general.default_source},
              {"fallback_source", c.general.fallback_source},
+             {"ffmpeg_path", path_s(c.general.ffmpeg_path)},
          }},
         {"local_files",
          json{
@@ -201,6 +202,9 @@ json config_to_json(const Config& c) {
          json{
              {"race_start_playback", c.playback.race_start_playback},
              {"quick_station_skip", c.playback.quick_station_skip},
+             {"volume_normalization", c.playback.volume_normalization},
+             {"equalizer_enabled", c.playback.equalizer_enabled},
+             {"equalizer_bands", c.playback.equalizer_bands},
              {"force_stereo_audio", c.playback.force_stereo_audio},
          }},
     };
@@ -229,6 +233,7 @@ void apply_patch(Config& c, const json& j) {
             pull(*it, "open_dashboard_on_start", c.general.open_dashboard_on_start);
         c.general.default_source  = pull(*it, "default_source", c.general.default_source);
         c.general.fallback_source = pull(*it, "fallback_source", c.general.fallback_source);
+        c.general.ffmpeg_path     = pull_path(*it, "ffmpeg_path", c.general.ffmpeg_path);
     }
     if (auto it = j.find("local_files"); it != j.end()) {
         c.local_files.enabled   = pull(*it, "enabled", c.local_files.enabled);
@@ -266,6 +271,24 @@ void apply_patch(Config& c, const json& j) {
             c.playback.race_start_playback = std::move(rs);
         c.playback.quick_station_skip =
             pull(*it, "quick_station_skip", c.playback.quick_station_skip);
+        c.playback.volume_normalization =
+            pull(*it, "volume_normalization", c.playback.volume_normalization);
+        c.playback.equalizer_enabled =
+            pull(*it, "equalizer_enabled", c.playback.equalizer_enabled);
+        if (auto bands = it->find("equalizer_bands"); bands != it->end() && bands->is_array()) {
+            for (std::size_t i = 0; i < c.playback.equalizer_bands.size() && i < bands->size();
+                 ++i) {
+                float v = 0.0f;
+                try {
+                    v = (*bands)[i].get<float>();
+                } catch (...) {
+                    continue;
+                }
+                if (v < -6.0f) v = -6.0f;
+                if (v > 6.0f) v = 6.0f;
+                c.playback.equalizer_bands[i] = v;
+            }
+        }
         c.playback.force_stereo_audio =
             pull(*it, "force_stereo_audio", c.playback.force_stereo_audio);
     }

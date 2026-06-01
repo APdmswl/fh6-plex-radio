@@ -2,7 +2,7 @@
 
 Korean README: [README.ko.md](README.ko.md)
 
-Current version: `v0.1.2`
+Current version: `v0.1.3`
 
 Based on [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)
 by g0ldyy.
@@ -29,8 +29,10 @@ dashboard for Plex library, artist, album, and playlist playback.
 This is experimental and may break after game updates. Keep a backup of your
 install and use it at your own risk.
 
-`v0.1.2` improves Plex connection diagnostics for local server URL, token, and
-WinHTTP certificate failures.
+`v0.1.3` merges selected upstream runtime improvements while keeping the
+dashboard Plex-focused. It adds a shared ffmpeg path fallback, optional Plex
+loudness normalization, optional 5-band EQ, and more tolerant child-process
+job handling.
 
 ## Install
 
@@ -69,7 +71,8 @@ ffmpeg, so install it separately.
 Either:
 
 - add the folder containing `ffmpeg.exe` to your Windows `PATH`, or
-- enter the full path in the dashboard under Settings > Plex > ffmpeg path.
+- enter the full path in the dashboard under Settings > General > ffmpeg path,
+  or Settings > Plex > ffmpeg path for a Plex-specific override.
 
 Portable ffmpeg works fine. Example:
 

@@ -27,6 +27,7 @@ add_library(version SHARED
     src/config_store.cpp
     src/ring_buffer.cpp
     src/audio_source_manager.cpp
+    src/playback_dsp.cpp
     src/fmod/pe_image.cpp
     src/fmod/sig_scanner.cpp
     src/fmod/radio_discovery.cpp

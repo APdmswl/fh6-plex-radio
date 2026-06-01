@@ -3,7 +3,9 @@
 
 #include <toml.hpp>
 
+#include <cstdio>
 #include <fstream>
+#include <span>
 #include <system_error>
 
 namespace fh6 {
@@ -58,6 +60,7 @@ Config load_config(const std::filesystem::path& path) {
     cfg.general.default_source = pick<std::string>(g, "default_source", cfg.general.default_source);
     cfg.general.fallback_source =
         pick<std::string>(g, "fallback_source", cfg.general.fallback_source);
+    cfg.general.ffmpeg_path = pick_path(g, "ffmpeg_path");
 
     const auto& lf            = section(root, "local_files");
     cfg.local_files.enabled   = pick<bool>(lf, "enabled", cfg.local_files.enabled);
@@ -101,8 +104,24 @@ Config load_config(const std::filesystem::path& path) {
     }
     cfg.playback.quick_station_skip =
         pick<bool>(pb, "quick_station_skip", cfg.playback.quick_station_skip);
+    cfg.playback.volume_normalization =
+        pick<bool>(pb, "volume_normalization", cfg.playback.volume_normalization);
+    cfg.playback.equalizer_enabled =
+        pick<bool>(pb, "equalizer_enabled", cfg.playback.equalizer_enabled);
     cfg.playback.force_stereo_audio =
         pick<bool>(pb, "force_stereo_audio", cfg.playback.force_stereo_audio);
+    try {
+        if (pb.contains("equalizer_bands")) {
+            auto v = toml::find<std::vector<double>>(pb, "equalizer_bands");
+            for (std::size_t i = 0; i < cfg.playback.equalizer_bands.size() && i < v.size();
+                 ++i) {
+                float b = static_cast<float>(v[i]);
+                if (b < -6.f) b = -6.f;
+                if (b > 6.f) b = 6.f;
+                cfg.playback.equalizer_bands[i] = b;
+            }
+        }
+    } catch (...) {}
 
     return cfg;
 }
@@ -178,6 +197,17 @@ struct Emitter {
         }
         out += "]\n";
     }
+    void kv_floats(std::string_view key, std::span<const float> v) {
+        out += key;
+        out += " = [";
+        char buf[32];
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            if (i) out += ", ";
+            std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(v[i]));
+            out += buf;
+        }
+        out += "]\n";
+    }
 };
 
 } // namespace
@@ -190,6 +220,7 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("open_dashboard_on_start", cfg.general.open_dashboard_on_start);
     e.kv("default_source", cfg.general.default_source);
     e.kv("fallback_source", cfg.general.fallback_source);
+    e.kv_path("ffmpeg_path", cfg.general.ffmpeg_path);
 
     e.header("local_files");
     e.kv("enabled", cfg.local_files.enabled);
@@ -222,6 +253,9 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.header("playback");
     e.kv("race_start_playback", cfg.playback.race_start_playback);
     e.kv("quick_station_skip", cfg.playback.quick_station_skip);
+    e.kv("volume_normalization", cfg.playback.volume_normalization);
+    e.kv("equalizer_enabled", cfg.playback.equalizer_enabled);
+    e.kv_floats("equalizer_bands", std::span<const float>{cfg.playback.equalizer_bands});
     e.kv("force_stereo_audio", cfg.playback.force_stereo_audio);
 
     auto tmp  = path;

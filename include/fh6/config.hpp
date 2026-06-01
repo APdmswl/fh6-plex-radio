@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -11,15 +13,19 @@ struct PlaybackConfig {
     // never advance the queue unless the user opts in.
     std::string race_start_playback = "ignore";
     bool quick_station_skip         = false;
+    bool volume_normalization       = false;
+    bool equalizer_enabled          = false;
+    std::array<float, 5> equalizer_bands{}; // 60 / 250 / 1000 / 4000 / 12000 Hz
     bool force_stereo_audio         = true;
 };
 
 struct GeneralConfig {
-    uint16_t port               = 8420;
-    uint32_t ring_buffer_mb     = 16;
+    uint16_t port                = 8420;
+    uint32_t ring_buffer_mb      = 16;
     bool open_dashboard_on_start = true;
-    std::string default_source  = "local_files";
-    std::string fallback_source = "local_files";
+    std::string default_source   = "local_files";
+    std::string fallback_source  = "local_files";
+    std::filesystem::path ffmpeg_path; // empty = look up on PATH; shared fallback
 };
 
 struct LocalFilesConfig {
@@ -27,7 +33,8 @@ struct LocalFilesConfig {
     std::filesystem::path music_dir;
     bool recursive = true;
     bool shuffle   = true;
-    std::vector<std::string> supported_formats{"mp3", "flac", "wav", "ogg", "m4a", "opus"};
+    std::vector<std::string> supported_formats{"mp3", "flac", "wav",  "ogg",  "m4a",
+                                               "opus", "aac",  "wma", "aiff", "aif"};
 };
 
 struct YouTubeMusicConfig {
