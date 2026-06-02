@@ -15,6 +15,8 @@
 #include <stop_token>
 #include <thread>
 
+namespace fh6 { class IAudioSource; }
+
 namespace fh6::fmod_bridge {
 
 // 50 Hz tick: keeps the DSP installed on the current radio channel and
@@ -40,11 +42,11 @@ private:
 
     void run(const std::stop_token& tok);
     void push_metadata() noexcept;
+    void schedule_metadata_refresh(time_point now) noexcept;
+    void pump_metadata_refresh(time_point now) noexcept;
     void run_playback_state_machines(time_point now) noexcept;
 
     bool acquire_target() noexcept;
-    void schedule_target_reacquire(time_point now) noexcept;
-    void pump_target_reacquire(time_point now) noexcept;
     const RadioInstance* select_instance(const DiscoveryResult& disc) const noexcept;
 
     DSPBridge& bridge_;
@@ -54,9 +56,13 @@ private:
     GameStateProbe game_state_;
     std::uint64_t prev_calls_ = 0;
     int stale_ticks_          = 0;
+    int idle_ticks_           = 0;
+    bool radio_audible_       = true;
+    bool audible_primed_      = false;
+    IAudioSource* audible_source_ = nullptr;
     time_point last_retune_{};
-    time_point reacquire_until_{};
-    time_point next_reacquire_{};
+    time_point metadata_refresh_until_{};
+    time_point next_metadata_refresh_{};
 
     mutable std::mutex playback_opts_mtx_;
     std::shared_ptr<const PlaybackConfig> playback_opts_;

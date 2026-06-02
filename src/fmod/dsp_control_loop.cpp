@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <cmath>
-#include <cstring>
 #include <utility>
 
 namespace fh6::fmod_bridge {
@@ -19,12 +18,17 @@ constexpr int kDiscoveryTries  = 120; // 10-minute budget; the radio system
                                       // isn't wired up until well into launch.
 
 // Ticks of no read_callback progress (while the source is producing PCM)
-// before we conclude the DSP is attached to a dead channel. 1s @ 20ms.
+// before we conclude the game tore the radio channel down. 1s @ 20ms.
 constexpr int kStaleTickThreshold = 50;
 
+// Frozen-read ticks before we treat the station as genuinely silenced (pause
+// menu, radio off). Must clear the stall-retune rebuild window, so a rewind or
+// race transition that briefly tears the channel down doesn't read as a pause.
+constexpr int kInaudibleTicks = 175;
+
 constexpr auto kRetuneCooldown = 6s;
-constexpr auto kReacquireWindow = 12s;
-constexpr auto kReacquireRetry  = 1s;
+constexpr auto kMetadataRefreshWindow = 5s;
+constexpr auto kMetadataRefreshRetry  = 250ms;
 
 // SoundName of the placeholder sample our DSP overwrites. Matches the carrier
 // shipped by the radio-mod media overlay; if absent, we fall back to the
@@ -80,12 +84,12 @@ void ControlLoop::run(const std::stop_token& tok) {
         bridge_.retarget_if_needed();
         bridge_.manager().pump_once();
         const auto now = std::chrono::steady_clock::now();
-        pump_target_reacquire(now);
 
         if (++meta_tick >= kMetaEveryNTicks) {
             meta_tick = 0;
-            push_metadata();
+            if (radio_audible_) push_metadata();
         }
+        pump_metadata_refresh(now);
 
         // Staleness watchdog: if the game tears down the radio channel, cycle
         // the in-game station off/on so FH6 allocates a fresh FMOD channel.
@@ -100,13 +104,41 @@ void ControlLoop::run(const std::stop_token& tok) {
                     game_state_.read().on_target_station &&
                     game_state_.retune_streamer_station()) {
                     last_retune_ = now;
-                    reset_radio_discovery_cache();
-                    bridge_.detach_current();
-                    schedule_target_reacquire(now);
+                    acquire_target();
                 }
             }
         } else {
             stale_ticks_ = 0;
+        }
+
+        // Audibility edge: while a source is producing, a frozen read_callback
+        // means the game silenced our station. Skip metadata refreshes during
+        // sustained silence so the HUD does not get re-populated from a stale
+        // RadioStreamFmod slot after pause/rewind-style transitions.
+        if (active && busy) {
+            if (active != audible_source_) {
+                audible_source_ = active;
+                idle_ticks_     = 0;
+                audible_primed_ = false;
+                radio_audible_  = true;
+            }
+            if (c != prev_calls_) {
+                idle_ticks_     = 0;
+                audible_primed_ = true;
+            } else if (audible_primed_) {
+                ++idle_ticks_;
+            }
+            const bool audible = idle_ticks_ < kInaudibleTicks;
+            if (audible != radio_audible_) {
+                radio_audible_ = audible;
+                active->on_radio_audible(audible);
+                if (audible) schedule_metadata_refresh(now);
+            }
+        } else {
+            idle_ticks_     = 0;
+            audible_primed_ = false;
+            radio_audible_  = true;
+            audible_source_ = nullptr;
         }
 
         run_playback_state_machines(now);
@@ -154,28 +186,6 @@ bool ControlLoop::acquire_target() noexcept {
     return true;
 }
 
-void ControlLoop::schedule_target_reacquire(time_point now) noexcept {
-    reacquire_until_ = now + kReacquireWindow;
-    next_reacquire_ = now;
-}
-
-void ControlLoop::pump_target_reacquire(time_point now) noexcept {
-    if (reacquire_until_ == time_point{} || now > reacquire_until_) {
-        reacquire_until_ = {};
-        next_reacquire_ = {};
-        return;
-    }
-    if (now < next_reacquire_) return;
-
-    if (acquire_target()) {
-        reacquire_until_ = {};
-        next_reacquire_ = {};
-        push_metadata();
-        return;
-    }
-    next_reacquire_ = now + kReacquireRetry;
-}
-
 const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc) const noexcept {
     const RadioInstance* target = nullptr;
     const RadioInstance* fallback = nullptr;
@@ -186,6 +196,24 @@ const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc) c
         if (!fallback) fallback = &i;
     }
     return target ? target : fallback;
+}
+
+void ControlLoop::schedule_metadata_refresh(time_point now) noexcept {
+    metadata_refresh_until_ = now + kMetadataRefreshWindow;
+    next_metadata_refresh_  = now;
+}
+
+void ControlLoop::pump_metadata_refresh(time_point now) noexcept {
+    if (metadata_refresh_until_ == time_point{} || now > metadata_refresh_until_) {
+        metadata_refresh_until_ = {};
+        next_metadata_refresh_  = {};
+        return;
+    }
+    if (now < next_metadata_refresh_) return;
+
+    meta_.reset_cache();
+    if (radio_audible_) push_metadata();
+    next_metadata_refresh_ = now + kMetadataRefreshRetry;
 }
 
 void ControlLoop::run_playback_state_machines(time_point now) noexcept {
@@ -217,6 +245,10 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     const bool restart_edge_in = game.race_restart && !prev_race_restart_;
     const bool race_event      = (race_edge_in || restart_edge_in) && r10;
     const auto race_debounce   = restart_edge_in ? kRaceRestartDebounce : kRaceStartDebounce;
+    if (race_event) {
+        acquire_target();
+        schedule_metadata_refresh(now);
+    }
     if (race_event && now - last_race_event_ >= race_debounce &&
         now - last_skip_cmd_ >= kCommandCooldown) {
         const auto& mode    = opts->race_start_playback;
@@ -233,6 +265,7 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
             ring.drain();
             last_skip_cmd_ = now;
         }
+        schedule_metadata_refresh(now);
         last_race_event_ = now;
         log::info("[ctrl] race {} -- {}", restart_edge_in ? "restarted" : "started", outcome);
     }
@@ -243,6 +276,8 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
         last_r10_off_ = now;
         if (opts->quick_station_skip) quick_skip_armed_ = true;
     } else if (!prev_r10_ && r10) {
+        acquire_target();
+        schedule_metadata_refresh(now);
         if (quick_skip_armed_ && now - last_r10_off_ <= kQuickSkipWindow &&
             now - last_skip_cmd_ >= kCommandCooldown) {
             if (active->skip_next()) {

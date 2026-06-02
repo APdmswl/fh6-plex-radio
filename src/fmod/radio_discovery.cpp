@@ -187,12 +187,6 @@ constexpr int kRescanThreshold = 30;
 
 } // namespace
 
-void reset_radio_discovery_cache() noexcept {
-    std::scoped_lock lk{g_cache_mu};
-    g_cache = Cache{};
-    log::info("[discovery] cache reset; next scan will walk the heap");
-}
-
 void* resolve_fmod_system(const PEImage& img, std::byte* radio_stream) noexcept {
     if (!radio_stream) return nullptr;
     void* out = nullptr;

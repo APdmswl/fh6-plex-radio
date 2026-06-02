@@ -35,8 +35,4 @@ void* resolve_fmod_system(const PEImage& img, std::byte* radio_stream) noexcept;
 // Empty result means the radio system isn't ready yet; retry later.
 DiscoveryResult discover_radio_instances(const PEImage& img) noexcept;
 
-// Drop cached RadioStreamFmod heap candidates. Station off/on recovery can
-// leave old candidates readable but detached from the HUD metadata path.
-void reset_radio_discovery_cache() noexcept;
-
 } // namespace fh6::fmod_bridge

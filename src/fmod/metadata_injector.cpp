@@ -104,7 +104,10 @@ bool write_string_slot(std::byte* target, std::string_view src) noexcept {
 } // namespace
 
 void MetadataInjector::set_target(std::byte* sample_props_body) noexcept {
-    if (body_ == sample_props_body) return;
+    if (body_ == sample_props_body) {
+        reset_cache();
+        return;
+    }
     body_ = sample_props_body;
     reset_cache();
     log::info("[meta] target set to SampleProperties body @0x{:X}",

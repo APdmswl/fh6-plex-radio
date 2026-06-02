@@ -54,6 +54,8 @@ public:
 
     virtual void set_playback_options(const PlaybackConfig& /*opts*/) {}
 
+    virtual void on_radio_audible(bool /*audible*/) {}
+
     virtual TrackInfo current_track() const               = 0;
     virtual PlaybackState playback_state() const noexcept = 0;
     virtual AuthState auth_state() const noexcept         = 0;
