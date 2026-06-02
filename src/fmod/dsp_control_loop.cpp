@@ -29,6 +29,7 @@ constexpr int kInaudibleTicks = 175;
 constexpr auto kRetuneCooldown = 6s;
 constexpr auto kMetadataRefreshWindow = 5s;
 constexpr auto kMetadataRefreshRetry  = 250ms;
+constexpr auto kTargetRecheckInterval = 3s;
 
 // SoundName of the placeholder sample our DSP overwrites. Matches the carrier
 // shipped by the radio-mod media overlay; if absent, we fall back to the
@@ -71,6 +72,7 @@ void ControlLoop::run(const std::stop_token& tok) {
         log::warn("[ctrl] discovery timed out; control loop exiting");
         return;
     }
+    next_target_recheck_ = std::chrono::steady_clock::now() + kTargetRecheckInterval;
 
     // The radio HUD reads from the SampleProperties slots at a much lower
     // rate than the audio mixer. 4 Hz is more than enough and keeps the
@@ -90,6 +92,10 @@ void ControlLoop::run(const std::stop_token& tok) {
             if (radio_audible_) push_metadata();
         }
         pump_metadata_refresh(now);
+        if (now >= next_target_recheck_) {
+            next_target_recheck_ = now + kTargetRecheckInterval;
+            if (game_state_.read().on_target_station) acquire_target(false);
+        }
 
         // Staleness watchdog: if the game tears down the radio channel, cycle
         // the in-game station off/on so FH6 allocates a fresh FMOD channel.
@@ -164,13 +170,16 @@ void ControlLoop::run(const std::stop_token& tok) {
     log::info("[ctrl] control loop exiting");
 }
 
-bool ControlLoop::acquire_target() noexcept {
+bool ControlLoop::acquire_target(bool allow_fallback) noexcept {
     auto disc = discover_radio_instances(img_);
-    const RadioInstance* chosen = select_instance(disc);
+    const RadioInstance* chosen = select_instance(disc, allow_fallback && !exact_target_seen_);
     if (!chosen) return false;
-    if (chosen->sound_name != kTargetSoundName) {
+    const bool exact_target = chosen->sound_name == kTargetSoundName;
+    if (!exact_target) {
         log::warn(R"([ctrl] no instance matches target "{}"; falling back to "{}")",
                   kTargetSoundName, chosen->sound_name);
+    } else {
+        exact_target_seen_ = true;
     }
 
     void* fmod_system = resolve_fmod_system(img_, chosen->radio_stream);
@@ -178,15 +187,24 @@ bool ControlLoop::acquire_target() noexcept {
         log::warn("[ctrl] FMOD SystemI resolution failed");
         return false;
     }
-    bridge_.set_target(*chosen, fmod_system);
-    meta_.set_target(chosen->sample_props_body);
-    log::info("[ctrl] targeting RadioStreamFmod @0x{:X} SoundName=\"{}\" SystemI*=0x{:X}",
-              reinterpret_cast<uintptr_t>(chosen->radio_stream), chosen->sound_name,
-              reinterpret_cast<uintptr_t>(fmod_system));
+    const bool changed = chosen->radio_stream != target_radio_stream_ ||
+                         chosen->sample_props_body != target_sample_props_;
+    if (changed) {
+        bridge_.set_target(*chosen, fmod_system);
+        meta_.set_target(chosen->sample_props_body);
+        target_radio_stream_ = chosen->radio_stream;
+        target_sample_props_ = chosen->sample_props_body;
+        log::info("[ctrl] targeting RadioStreamFmod @0x{:X} SampleProperties=0x{:X} "
+                  "SoundName=\"{}\" SystemI*=0x{:X}",
+                  reinterpret_cast<uintptr_t>(chosen->radio_stream),
+                  reinterpret_cast<uintptr_t>(chosen->sample_props_body), chosen->sound_name,
+                  reinterpret_cast<uintptr_t>(fmod_system));
+    }
     return true;
 }
 
-const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc) const noexcept {
+const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc,
+                                                  bool allow_fallback) const noexcept {
     const RadioInstance* target = nullptr;
     const RadioInstance* fallback = nullptr;
     for (auto& i : disc.instances) {
@@ -195,7 +213,7 @@ const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc) c
         if (is_target && !target) target = &i;
         if (!fallback) fallback = &i;
     }
-    return target ? target : fallback;
+    return target ? target : (allow_fallback ? fallback : nullptr);
 }
 
 void ControlLoop::schedule_metadata_refresh(time_point now) noexcept {

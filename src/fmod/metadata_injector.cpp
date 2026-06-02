@@ -25,6 +25,15 @@ static_assert(sizeof(StringHeader) == 32);
 
 constexpr std::uint64_t kSsoCap = 15;
 
+bool live_slot_matches(std::byte* target, std::string_view desired) noexcept {
+    bool matches = false;
+    seh_call([&] {
+        auto live = safe_read_msvc_string(target);
+        matches   = live && *live == desired;
+    });
+    return matches;
+}
+
 bool write_string_slot(std::byte* target, std::string_view src) noexcept {
     if (!target) return false;
 
@@ -121,10 +130,16 @@ void MetadataInjector::reset_cache() noexcept {
 
 bool MetadataInjector::update(std::string_view title, std::string_view artist) noexcept {
     if (!body_) return false;
-    if (title == last_title_ && artist == last_artist_) return true;
+
+    const bool title_cached  = title == last_title_;
+    const bool artist_cached = artist == last_artist_;
+    const bool write_title   = !title_cached || !live_slot_matches(body_ + kTitleOffset, title);
+    const bool write_artist  = !artist_cached || !live_slot_matches(body_ + kArtistOffset, artist);
+
+    if (!write_title && !write_artist) return true;
 
     bool ok = true;
-    if (title != last_title_) {
+    if (write_title) {
         if (write_string_slot(body_ + kTitleOffset, title)) {
             last_title_.assign(title);
         } else {
@@ -132,7 +147,7 @@ bool MetadataInjector::update(std::string_view title, std::string_view artist) n
             ok = false;
         }
     }
-    if (artist != last_artist_) {
+    if (write_artist) {
         if (write_string_slot(body_ + kArtistOffset, artist)) {
             last_artist_.assign(artist);
         } else {

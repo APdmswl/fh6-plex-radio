@@ -30,8 +30,9 @@ public:
     // Drops the cached strings so the next call rewrites unconditionally.
     void reset_cache() noexcept;
 
-    // Idempotent: writes only when title/artist differ from the last
-    // successful write. Returns true on a successful write (or no-op).
+    // Idempotent, but verifies the live game-owned string slots before
+    // accepting a cache hit. FH6 can overwrite these while driving, and the
+    // HUD must be re-pinned to the active source metadata.
     bool update(std::string_view title, std::string_view artist) noexcept;
 
 private:

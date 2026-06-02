@@ -46,8 +46,9 @@ private:
     void pump_metadata_refresh(time_point now) noexcept;
     void run_playback_state_machines(time_point now) noexcept;
 
-    bool acquire_target() noexcept;
-    const RadioInstance* select_instance(const DiscoveryResult& disc) const noexcept;
+    bool acquire_target(bool allow_fallback = true) noexcept;
+    const RadioInstance* select_instance(const DiscoveryResult& disc,
+                                         bool allow_fallback) const noexcept;
 
     DSPBridge& bridge_;
     const PEImage& img_;
@@ -61,8 +62,12 @@ private:
     bool audible_primed_      = false;
     IAudioSource* audible_source_ = nullptr;
     time_point last_retune_{};
+    time_point next_target_recheck_{};
     time_point metadata_refresh_until_{};
     time_point next_metadata_refresh_{};
+    std::byte* target_radio_stream_ = nullptr;
+    std::byte* target_sample_props_ = nullptr;
+    bool exact_target_seen_ = false;
 
     mutable std::mutex playback_opts_mtx_;
     std::shared_ptr<const PlaybackConfig> playback_opts_;
