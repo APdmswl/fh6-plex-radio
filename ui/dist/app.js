@@ -1,105 +1,180 @@
-// FH6 Universal Radio dashboard. Vanilla JS, no build step. `state` holds
-// the latest /api/state; `cfg` holds the latest /api/config. Render functions
-// are idempotent and only touch nodes whose displayed value changed.
-
-const $  = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 const api = {
   async get(path) {
-    const r = await fetch(path);
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-    return r.json();
+    const response = await fetch(path);
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || response.statusText);
+    return response.json();
   },
   async send(path, body, method = "POST") {
-    const r = await fetch(path, {
+    const response = await fetch(path, {
       method,
       headers: body ? { "content-type": "application/json" } : {},
-      body:    body ? JSON.stringify(body) : undefined,
+      body: body ? JSON.stringify(body) : undefined,
     });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-    return r.json().catch(() => ({}));
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || response.statusText);
+    return response.json().catch(() => ({}));
   },
 };
 
-let state = null;
-let cfg   = null;
-let plexLists = { libraries: [], playlists: [], artists: [], albums: [] };
+const EQ_BAND_LABELS = ["60 Hz", "250 Hz", "1 kHz", "4 kHz", "12 kHz"];
 
-const plexSource = () => state?.sources?.available?.find(s => s.name === "plex");
+const SCHEMA = [
+  ["general", "General", [
+    ["port", "Port", "number", 1, 65535],
+    ["ring_buffer_mb", "Ring buffer (MB)", "number", 1, 64],
+    ["open_dashboard_on_start", "Open dashboard on start", "checkbox"],
+    ["default_source", "Default source", "source-select"],
+    ["fallback_source", "Fallback source", "source-select"],
+    ["ffmpeg_path", "ffmpeg path", "text"],
+  ]],
+  ["plex", "Plex", [
+    ["enabled", "Enabled", "checkbox"],
+    ["server_url", "Server URL", "text"],
+    ["token", "Token", "password"],
+    ["library_key", "Library key", "text"],
+    ["playlist_key", "Playlist key", "text"],
+    ["artist_key", "Artist key", "text"],
+    ["album_key", "Album key", "text"],
+    ["ffmpeg_path", "ffmpeg path override", "text"],
+    ["shuffle", "Shuffle", "checkbox"],
+  ]],
+  ["audio", "Audio", [
+    ["output_gain", "Output gain", "number", 0, 1, 0.01],
+  ]],
+  ["playback", "Playback", [
+    ["race_start_playback", "Race start", "select", ["ignore", "next", "restart"]],
+    ["quick_station_skip", "Quick station skip", "checkbox"],
+    ["volume_normalization", "Normalize loudness", "checkbox"],
+    ["equalizer_enabled", "Equalizer", "checkbox"],
+    ["equalizer_bands", "Equalizer bands", "bands"],
+    ["force_stereo_audio", "Force stereo audio", "checkbox"],
+  ]],
+];
+
+let state = null;
+let cfg = null;
+let plexLists = { libraries: [], playlists: [], artists: [], albums: [] };
+let volDirty = false;
+
+const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  "\"": "&quot;",
+  "'": "&#39;",
+}[char]));
 
 const fmt = ms => {
   if (!ms || ms < 0) return "0:00";
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const seconds = Math.floor(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 };
-const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({
-  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-}[c]));
 
-const toast = (msg, isErr = false) => {
+function toast(message, isError = false) {
   const el = document.createElement("div");
-  el.className = "toast" + (isErr ? " err" : "");
-  el.textContent = msg;
+  el.className = `toast${isError ? " err" : ""}`;
+  el.textContent = message;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2400);
-};
+  setTimeout(() => el.remove(), 2600);
+}
 
-// Only write when the displayed value changes, to avoid cursor jumps in inputs.
-const setText = (el, v) => { if (el && el.textContent !== String(v)) el.textContent = v; };
-const setValue = (el, v) => {
+function setText(el, value) {
+  if (el && el.textContent !== String(value)) el.textContent = value;
+}
+
+function setValue(el, value) {
   if (!el || document.activeElement === el) return;
-  if (el.type === "checkbox") el.checked = !!v;
-  else if (el.value !== String(v ?? "")) el.value = v ?? "";
-};
+  if (el.type === "checkbox") el.checked = Boolean(value);
+  else if (el.value !== String(value ?? "")) el.value = value ?? "";
+}
+
+const sources = () => state?.sources?.available || [];
+const activeSourceName = () => state?.sources?.active || "";
+const plexSource = () => sources().find(source => source.name === "plex");
+
+function sourceOptions(current = "") {
+  const rows = sources().map(source => [source.name, source.display_name || source.name]);
+  if (cfg?.plex && !rows.some(([name]) => name === "plex")) rows.push(["plex", "Plex"]);
+  if (current && !rows.some(([name]) => name === current)) rows.push([current, current]);
+  return rows.length ? rows : [["plex", "Plex"]];
+}
 
 function renderStatus() {
-  const ok = state?.game?.attached;
-  const sub = $("#status");
-  sub.className = "subtitle " + (ok ? "ok" : "err");
-  sub.textContent = ok ? "connected" : "bridge offline";
+  const ok = Boolean(state?.game?.attached);
+  const status = $("#status");
+  status.className = `status ${ok ? "ok" : "err"}`;
+  setText(status, ok ? "connected" : "bridge offline");
 }
 
 function renderNowPlaying() {
-  const t = state?.track || {};
+  const track = state?.track || {};
+  const title = track.title || "Nothing playing";
+  const artist = track.artist ? `${track.artist}${track.album ? " - " + track.album : ""}` : "";
+  const artUrl = track.artwork_url || "";
   const art = $("#np-art");
-  setText($("#np-title"),  t.title  || "Nothing playing");
-  setText($("#np-artist"), t.artist ? `${t.artist}${t.album ? " · " + t.album : ""}` : "");
-  setText($("#np-pos"), fmt(t.position_ms));
-  setText($("#np-dur"), fmt(t.duration_ms));
-  if (t.artwork_url) {
-    if (art.dataset.url !== t.artwork_url) {
-      art.style.backgroundImage = `url(${JSON.stringify(t.artwork_url)})`;
-      art.dataset.url = t.artwork_url;
+  const backdrop = $("#np-backdrop");
+
+  setText($("#np-title"), title);
+  setText($("#np-artist"), artist);
+  setText($("#np-pos"), fmt(track.position_ms));
+  setText($("#np-dur"), fmt(track.duration_ms));
+  setText($("#np-source"), activeSourceName() === "plex" ? "Plex Radio" : (activeSourceName() || "Radio"));
+
+  if (artUrl) {
+    const image = `url(${JSON.stringify(artUrl)})`;
+    if (art.dataset.url !== artUrl) {
+      art.style.backgroundImage = image;
+      backdrop.style.backgroundImage = image;
+      art.dataset.url = artUrl;
     }
     art.classList.add("has-art");
+    $("#hero").classList.add("has-art");
   } else {
     art.style.backgroundImage = "";
+    backdrop.style.backgroundImage = "";
     art.dataset.url = "";
     art.classList.remove("has-art");
+    $("#hero").classList.remove("has-art");
   }
-  const pct = (t.duration_ms && t.position_ms)
-    ? Math.min(100, (t.position_ms / t.duration_ms) * 100)
-    : 0;
-  $("#np-fill").style.width = pct + "%";
 
-  const src = plexSource();
-  const playing = src?.playback_state === "playing";
-  $("#t-play").textContent = playing ? "⏸" : "▶";
+  const pct = track.duration_ms && track.position_ms
+    ? Math.min(100, Math.max(0, (track.position_ms / track.duration_ms) * 100))
+    : 0;
+  $("#np-fill").style.width = `${pct}%`;
+
+  const playing = plexSource()?.playback_state === "playing";
+  $("#t-play").setAttribute("aria-label", playing ? "Pause" : "Play");
+  $("#t-play-icon").textContent = playing ? "II" : "\u25b6";
 }
 
-let volDirty = false;
+function renderRadioSummary() {
+  const active = sources().find(source => source.name === activeSourceName());
+  const plex = plexSource();
+  const note = plex?.auth_instructions || "";
+  const stateText = plex
+    ? `${plex.playback_state} - ${plex.auth_state.replace("_", " ")} - ${plex.details?.track_count ?? 0} tracks`
+    : "Plex source is not registered";
+
+  setText($("#radio-summary"), note || stateText);
+  setText($("#metric-source"), active?.display_name || activeSourceName() || "-");
+  setText($("#metric-buffer"), state?.audio?.ring_capacity
+    ? `${Math.round((state.audio.ring_avail || 0) / 1024)} KB`
+    : "-");
+  setText($("#metric-mode"), state?.audio?.native_dsp_mode || "-");
+}
+
 function renderOutput() {
-  const gain = state?.audio?.output_gain ?? 0;
-  if (!volDirty) {
-    const slider = $("#vol");
-    if (Math.abs(parseFloat(slider.value) - gain) > 0.005) slider.value = gain;
-    $("#vol-out").value = Math.round(gain * 100) + "%";
-  }
+  const gain = state?.audio?.output_gain ?? cfg?.audio?.output_gain ?? 1;
+  if (volDirty) return;
+  const slider = $("#vol");
+  if (Math.abs(parseFloat(slider.value || "0") - gain) > 0.005) slider.value = gain;
+  $("#vol-out").value = `${Math.round(gain * 100)}%`;
 }
 
 function fillSelect(el, rows, current, emptyLabel, labelFn) {
-  const sig = JSON.stringify([rows.map(r => [r.key, r.title, r.artist, r.leaf_count]), current, emptyLabel]);
+  const sig = JSON.stringify([rows.map(row => [row.key, row.title, row.artist, row.leaf_count]), current, emptyLabel]);
   if (el.dataset.sig === sig) return;
   el.dataset.sig = sig;
 
@@ -141,13 +216,12 @@ function renderPlexPanel() {
 
   const plex = plexSource();
   const note = plex?.auth_instructions || "";
-  const baseStatus = plex
+  const base = plex
     ? `${plex.playback_state} - ${plex.auth_state.replace("_", " ")} - ${plex.details?.track_count ?? 0} tracks`
     : "disabled";
-  const status = note ? `${baseStatus} - ${note}` : baseStatus;
+  const status = note ? `${base} - ${note}` : base;
   const statusEl = $("#plex-status");
-  statusEl.className = "muted plex-status" +
-    (plex?.auth_state === "error" ? " err" : plex?.auth_state === "needs_auth" ? " warn" : "");
+  statusEl.className = plex?.auth_state === "error" ? "err" : plex?.auth_state === "needs_auth" ? "warn" : "";
   setText(statusEl, status);
 }
 
@@ -166,12 +240,12 @@ function collectPlexConfig() {
 }
 
 async function loadPlexLists() {
-  const [libs, playlists] = await Promise.all([
+  const [libraries, playlists] = await Promise.all([
     api.get("/api/source/plex/libraries"),
     api.get("/api/source/plex/playlists"),
   ]);
   plexLists = {
-    libraries: libs.libraries || [],
+    libraries: libraries.libraries || [],
     playlists: playlists.playlists || [],
     artists: plexLists.artists || [],
     albums: plexLists.albums || [],
@@ -208,8 +282,7 @@ async function loadPlexAlbums() {
 }
 
 async function savePlexConfig({ play = false, load = false, loadLibrary = false, loadAlbums = false } = {}) {
-  const plex = collectPlexConfig();
-  const patch = { plex };
+  const patch = { plex: collectPlexConfig() };
   if (play) patch.general = { default_source: "plex", fallback_source: "plex" };
   cfg = await api.send("/api/config", patch, "PUT");
   renderPlexPanel();
@@ -217,6 +290,7 @@ async function savePlexConfig({ play = false, load = false, loadLibrary = false,
   if (load || play) await loadPlexLists();
   else if (loadLibrary) await loadPlexLibraryLists();
   else if (loadAlbums) await loadPlexAlbums();
+
   if (play) {
     await api.send("/api/source/plex/refresh");
     await api.send("/api/source/switch", { source: "plex" });
@@ -224,117 +298,104 @@ async function savePlexConfig({ play = false, load = false, loadLibrary = false,
   }
 }
 
-const SCHEMA = [
-  ["general", "General", [
-    ["port",                    "Port",                   "number", 1, 65535],
-    ["ring_buffer_mb",          "Ring buffer (MB)",       "number", 1, 64],
-    ["open_dashboard_on_start", "Open dashboard on start","checkbox"],
-    ["ffmpeg_path",             "ffmpeg path",            "text"],
-  ]],
-  ["plex", "Plex", [
-    ["enabled",      "Enabled",                "checkbox"],
-    ["server_url",   "Server URL",             "text"],
-    ["token",        "Token",                  "password"],
-    ["library_key",  "Library key",            "text"],
-    ["playlist_key", "Playlist key",           "text"],
-    ["artist_key",   "Artist key",             "text"],
-    ["album_key",    "Album key",              "text"],
-    ["ffmpeg_path",  "ffmpeg path (optional)", "text"],
-    ["shuffle",      "Shuffle",                "checkbox"],
-  ]],
-  ["audio", "Audio", [
-    ["output_gain", "Output gain", "number", 0, 1, 0.01],
-  ]],
-  ["playback", "Playback", [
-    ["race_start_playback", "Race start", "select", ["ignore", "next", "restart"]],
-    ["quick_station_skip",  "Quick station skip", "checkbox"],
-    ["volume_normalization","Normalize volume", "checkbox"],
-    ["equalizer_enabled",   "Equalizer", "checkbox"],
-    ["equalizer_bands",     "EQ bands", "float-list"],
-    ["force_stereo_audio",  "Force stereo audio", "checkbox"],
-  ]],
-];
-
 function field(section, [key, label, type, min, max, step]) {
   const id = `f-${section}-${key}`;
-  const cur = cfg?.[section]?.[key];
+  const current = cfg?.[section]?.[key];
   if (type === "checkbox") {
     return `<div class="field checkbox">
-      <input type="checkbox" id="${id}" data-section="${section}" data-key="${key}" ${cur ? "checked" : ""}>
-      <label for="${id}">${label}</label>
+      <input type="checkbox" id="${id}" data-section="${section}" data-key="${key}" ${current ? "checked" : ""}>
+      <label for="${id}">${esc(label)}</label>
     </div>`;
   }
   if (type === "select") {
-    const options = (min || []).map(v =>
-      `<option value="${esc(v)}" ${cur === v ? "selected" : ""}>${esc(v)}</option>`
+    const options = (min || []).map(value =>
+      `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(value)}</option>`
     ).join("");
     return `<div class="field">
-      <label for="${id}">${label}</label>
+      <label for="${id}">${esc(label)}</label>
       <select id="${id}" data-section="${section}" data-key="${key}">${options}</select>
     </div>`;
   }
-  if (type === "float-list") {
-    const value = Array.isArray(cur) ? cur.join(", ") : "";
+  if (type === "source-select") {
+    const options = sourceOptions(current).map(([value, text]) =>
+      `<option value="${esc(value)}" ${current === value ? "selected" : ""}>${esc(text)}</option>`
+    ).join("");
     return `<div class="field">
-      <label for="${id}">${label}</label>
-      <input id="${id}" type="text" data-section="${section}" data-key="${key}" data-float-list="1" value="${esc(value)}">
+      <label for="${id}">${esc(label)}</label>
+      <select id="${id}" data-section="${section}" data-key="${key}">${options}</select>
     </div>`;
   }
-  const attrs = type === "number"
-    ? ` min="${min ?? ''}" max="${max ?? ''}" step="${step ?? 1}"`
-    : "";
+  if (type === "bands") {
+    const values = Array.isArray(current) ? current : [0, 0, 0, 0, 0];
+    const inputs = EQ_BAND_LABELS.map((band, index) => `
+      <label>
+        <span>${esc(band)}</span>
+        <input type="number" min="-6" max="6" step="0.5" value="${esc(values[index] ?? 0)}" data-band-index="${index}">
+      </label>`).join("");
+    return `<div class="field bands" data-section="${section}" data-key="${key}">${inputs}</div>`;
+  }
+  const attrs = type === "number" ? ` min="${min ?? ""}" max="${max ?? ""}" step="${step ?? 1}"` : "";
   return `<div class="field">
-    <label for="${id}">${label}</label>
-    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${esc(cur ?? '')}">
+    <label for="${id}">${esc(label)}</label>
+    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${esc(current ?? "")}">
   </div>`;
 }
 
 function renderSettings() {
-  $("#settings-form").innerHTML = SCHEMA.map(([sec, title, fields]) =>
-    `<fieldset><legend>${title}</legend>${fields.map(f => field(sec, f)).join("")}</fieldset>`
+  $("#settings-form").innerHTML = SCHEMA.map(([section, title, fields]) =>
+    `<fieldset><legend>${esc(title)}</legend>${fields.map(item => field(section, item)).join("")}</fieldset>`
   ).join("");
 }
 
 function collectSettings() {
   const patch = {};
   $$("#settings-form [data-section]").forEach(el => {
-    const sec = el.dataset.section;
+    const section = el.dataset.section;
     const key = el.dataset.key;
-    (patch[sec] ??= {});
-    if (el.type === "checkbox")    patch[sec][key] = el.checked;
-    else if (el.type === "number") patch[sec][key] = parseFloat(el.value);
-    else if (el.dataset.floatList)  patch[sec][key] = el.value.split(",").map(v => parseFloat(v.trim()) || 0);
-    else                           patch[sec][key] = el.value;
+    patch[section] ??= {};
+    if (el.classList.contains("bands")) {
+      patch[section][key] = $$("input", el).map(input => {
+        const value = parseFloat(input.value);
+        return Number.isFinite(value) ? Math.max(-6, Math.min(6, value)) : 0;
+      });
+    } else if (el.type === "checkbox") {
+      patch[section][key] = el.checked;
+    } else if (el.type === "number") {
+      const value = parseFloat(el.value);
+      patch[section][key] = Number.isFinite(value) ? value : 0;
+    } else {
+      patch[section][key] = el.value;
+    }
   });
   return patch;
 }
 
 function openDrawer() {
   $("#drawer").classList.add("open");
-  $("#scrim").hidden = false;
   $("#drawer").setAttribute("aria-hidden", "false");
+  $("#scrim").hidden = false;
 }
+
 function closeDrawer() {
   $("#drawer").classList.remove("open");
-  $("#scrim").hidden = true;
   $("#drawer").setAttribute("aria-hidden", "true");
+  $("#scrim").hidden = true;
 }
 
 async function transport(action) {
-  const src = "plex";
-  const s = plexSource();
-  if (!s) {
+  const plex = plexSource();
+  if (!plex) {
     toast("Plex source is not registered", true);
     return;
   }
-  // Centre button is a smart play/pause toggle.
-  if (action === "play") {
-    if (s?.playback_state === "playing") action = "pause";
-  }
+  let nextAction = action;
+  if (nextAction === "play" && plex.playback_state === "playing") nextAction = "pause";
   try {
-    if (action !== "pause") await api.send("/api/source/switch", { source: src });
-    await api.send(`/api/source/${src}/${action}`);
-  } catch (e) { toast(e.message, true); }
+    if (nextAction !== "pause") await api.send("/api/source/switch", { source: "plex" });
+    await api.send(`/api/source/plex/${nextAction}`);
+  } catch (error) {
+    toast(error.message, true);
+  }
 }
 
 function wire() {
@@ -342,14 +403,16 @@ function wire() {
   $("#t-next").onclick = () => transport("next");
   $("#t-prev").onclick = () => transport("previous");
 
-  const vol = $("#vol");
-  vol.addEventListener("input", () => {
+  $("#vol").addEventListener("input", event => {
     volDirty = true;
-    $("#vol-out").value = Math.round(parseFloat(vol.value) * 100) + "%";
+    $("#vol-out").value = `${Math.round(parseFloat(event.target.value) * 100)}%`;
   });
-  vol.addEventListener("change", async () => {
-    try { await api.send("/api/options", { output_gain: parseFloat(vol.value) }); }
-    catch (e) { toast(e.message, true); }
+  $("#vol").addEventListener("change", async event => {
+    try {
+      await api.send("/api/options", { output_gain: parseFloat(event.target.value) });
+    } catch (error) {
+      toast(error.message, true);
+    }
     setTimeout(() => { volDirty = false; }, 400);
   });
 
@@ -357,9 +420,9 @@ function wire() {
     try {
       await savePlexConfig({ load: true });
       toast("Plex loaded");
-    } catch (e) {
-      setText($("#plex-status"), e.message);
-      toast(e.message, true);
+    } catch (error) {
+      setText($("#plex-status"), error.message);
+      toast(error.message, true);
     }
   };
   $("#plex-library").onchange = async () => {
@@ -369,19 +432,19 @@ function wire() {
     plexLists.artists = [];
     plexLists.albums = [];
     try { await savePlexConfig({ loadLibrary: true }); }
-    catch (e) { setText($("#plex-status"), e.message); toast(e.message, true); }
+    catch (error) { setText($("#plex-status"), error.message); toast(error.message, true); }
   };
   $("#plex-artist").onchange = async () => {
     $("#plex-playlist").value = "";
     $("#plex-album").value = "";
     plexLists.albums = [];
     try { await savePlexConfig({ loadAlbums: true }); }
-    catch (e) { setText($("#plex-status"), e.message); toast(e.message, true); }
+    catch (error) { setText($("#plex-status"), error.message); toast(error.message, true); }
   };
   $("#plex-album").onchange = async () => {
     $("#plex-playlist").value = "";
     try { await savePlexConfig(); }
-    catch (e) { setText($("#plex-status"), e.message); toast(e.message, true); }
+    catch (error) { setText($("#plex-status"), error.message); toast(error.message, true); }
   };
   $("#plex-playlist").onchange = async () => {
     if ($("#plex-playlist").value) {
@@ -389,74 +452,93 @@ function wire() {
       $("#plex-album").value = "";
     }
     try { await savePlexConfig(); }
-    catch (e) { setText($("#plex-status"), e.message); toast(e.message, true); }
+    catch (error) { setText($("#plex-status"), error.message); toast(error.message, true); }
   };
-  $("#plex-config").addEventListener("submit", async e => {
-    e.preventDefault();
+  $("#plex-config").addEventListener("submit", async event => {
+    event.preventDefault();
     try {
       await savePlexConfig();
       toast("Saved");
-    } catch (err) {
-      setText($("#plex-status"), err.message);
-      toast(err.message, true);
+    } catch (error) {
+      setText($("#plex-status"), error.message);
+      toast(error.message, true);
     }
   });
   $("#plex-play").onclick = async () => {
     try {
       await savePlexConfig({ play: true });
       toast("Plex playing");
-    } catch (e) {
-      setText($("#plex-status"), e.message);
-      toast(e.message, true);
+    } catch (error) {
+      setText($("#plex-status"), error.message);
+      toast(error.message, true);
     }
   };
 
-  $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); };
+  $("#open-settings").onclick = async () => {
+    cfg = await api.get("/api/config");
+    renderSettings();
+    openDrawer();
+  };
   $("#close-settings").onclick = closeDrawer;
-  $("#scrim").onclick          = closeDrawer;
-  $("#save-config").onclick    = async () => {
+  $("#scrim").onclick = closeDrawer;
+  $("#save-config").onclick = async () => {
     try {
       cfg = await api.send("/api/config", collectSettings(), "PUT");
+      renderSettings();
       renderPlexPanel();
-      toast("Saved");
       closeDrawer();
-    } catch (e) { toast(e.message, true); }
+      toast("Saved");
+    } catch (error) {
+      toast(error.message, true);
+    }
   };
-  $("#reload-config").onclick  = async () => {
+  $("#reload-config").onclick = async () => {
     cfg = await api.send("/api/config/reload");
     renderSettings();
     renderPlexPanel();
     toast("Reloaded from disk");
   };
-
-  api.get("/api/config").then(c => {
-    cfg = c;
-    renderPlexPanel();
-    if (cfg.plex?.enabled && cfg.plex?.token) loadPlexLists().catch(() => {});
-  }).catch(() => {});
-}
-
-// SSE if available, polling fallback otherwise.
-function connect() {
-  let es;
-  try {
-    es = new EventSource("/api/events");
-    es.onmessage = e => { state = JSON.parse(e.data); render(); };
-    es.onerror   = () => { es.close(); setTimeout(poll, 1000); };
-  } catch { poll(); }
-}
-async function poll() {
-  try { state = await api.get("/api/state"); render(); }
-  catch { /* keep last state */ }
-  setTimeout(poll, 1000);
 }
 
 function render() {
   renderStatus();
   renderNowPlaying();
+  renderRadioSummary();
   renderOutput();
   renderPlexPanel();
 }
 
+function connectEvents() {
+  try {
+    const events = new EventSource("/api/events");
+    events.onmessage = event => {
+      state = JSON.parse(event.data);
+      render();
+    };
+    events.onerror = () => {
+      events.close();
+      setTimeout(poll, 1000);
+    };
+  } catch {
+    poll();
+  }
+}
+
+async function poll() {
+  try {
+    state = await api.get("/api/state");
+    render();
+  } catch {
+    // Keep the last visible state while the bridge is offline.
+  }
+  setTimeout(poll, 1000);
+}
+
 wire();
-connect();
+api.get("/api/config").then(next => {
+  cfg = next;
+  renderPlexPanel();
+  renderOutput();
+  if (cfg.plex?.enabled && cfg.plex?.token) loadPlexLists().catch(() => {});
+}).catch(() => {});
+connectEvents();

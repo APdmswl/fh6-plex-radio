@@ -90,6 +90,22 @@ YouTubeMusicConfig effective_youtube_config(const Config& c) {
     return out;
 }
 
+void switch_to_configured_or_sole(AudioSourceManager& mgr, const Config& c) {
+    if (mgr.switch_to(c.general.default_source) || mgr.switch_to(c.general.fallback_source))
+        return;
+
+    auto snap = mgr.sources_snapshot();
+    if (snap.empty()) {
+        log::warn("[bridge] no sources registered");
+    } else if (snap.size() == 1) {
+        if (!mgr.switch_to(snap[0]->name()))
+            log::error("[bridge] failed to switch to sole registered source '{}'", snap[0]->name());
+    } else {
+        log::warn("[bridge] configured default/fallback sources not found among {} registered sources",
+                  snap.size());
+    }
+}
+
 } // namespace
 
 void run_bridge(HMODULE self) noexcept {
@@ -169,7 +185,7 @@ void run_bridge(HMODULE self) noexcept {
     store.on_change([&bridge, &mgr, sync_sources, ctrl_ptr = ctrl.get()](const Config& c) {
         sync_sources(c);
         if (!mgr.active()) {
-            if (!mgr.switch_to(c.general.default_source)) mgr.switch_to(c.general.fallback_source);
+            switch_to_configured_or_sole(mgr, c);
         }
 
         // Push the gain to both: the control loop's ramper otherwise snaps
@@ -200,9 +216,7 @@ void run_bridge(HMODULE self) noexcept {
     // Start the default source only after the DSP control loop and dashboard
     // are alive. Plex may need to buffer/download the first track; doing that
     // earlier can delay radio-channel pinning during game startup.
-    if (!mgr.switch_to(cfg.general.default_source) && !mgr.switch_to(cfg.general.fallback_source)) {
-        log::warn("[bridge] neither default nor fallback source was registered");
-    }
+    switch_to_configured_or_sole(mgr, cfg);
 
     for (;;) Sleep(60'000);
 }

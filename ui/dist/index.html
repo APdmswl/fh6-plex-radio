@@ -1,112 +1,139 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FH6 Plex Radio</title>
-<link rel="stylesheet" href="styles.css">
-</head>
-<body>
-<header>
-  <div class="brand">
-    <span class="mark"></span>
-    <div>
-      <h1>FH6 Plex Radio</h1>
-      <span class="subtitle" id="status">connecting...</span>
-    </div>
-  </div>
-  <button class="ghost" id="open-settings" aria-label="Settings">
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-      <path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4.9a7.6 7.6 0 0 0-1.7-1L14.9 3h-3.8l-.4 2.9c-.6.3-1.2.6-1.7 1L6.6 6 4.6 9.4 6.6 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-.9c.5.4 1.1.7 1.7 1l.4 2.9h3.8l.4-2.9c.6-.3 1.2-.6 1.7-1l2.4.9 2-3.4-2-1.6Zm-7.4 2.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/>
-    </svg>
-  </button>
-</header>
-
-<main>
-  <section class="now-playing card">
-    <div class="art" id="np-art" aria-hidden="true"></div>
-    <div class="meta">
-      <div class="title" id="np-title">Nothing playing</div>
-      <div class="artist" id="np-artist"></div>
-      <div class="progress">
-        <div class="bar"><div class="fill" id="np-fill"></div></div>
-        <div class="times"><span id="np-pos">0:00</span><span id="np-dur">0:00</span></div>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>FH6 Plex Radio</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <div>
+          <h1>FH6 Plex Radio</h1>
+          <span class="status" id="status">connecting...</span>
+        </div>
       </div>
-    </div>
-    <div class="transport">
-      <button class="icon" id="t-prev" title="Previous">⏮</button>
-      <button class="icon primary" id="t-play" title="Play / pause">▶</button>
-      <button class="icon" id="t-next" title="Next">⏭</button>
-    </div>
-  </section>
+      <button class="icon-btn" id="open-settings" type="button" aria-label="Settings" title="Settings">
+        <span aria-hidden="true">&#9881;</span>
+      </button>
+    </header>
 
-  <section class="card" id="plex-card" hidden>
-    <h2>Plex</h2>
-    <form id="plex-config" class="plex-grid">
-      <label>
-        <span>Server</span>
-        <input type="text" id="plex-server" placeholder="https://your-plex.example.com" autocomplete="off">
-      </label>
-      <label>
-        <span>Token</span>
-        <input type="password" id="plex-token" autocomplete="off">
-      </label>
-      <label>
-        <span>Library</span>
-        <select id="plex-library"></select>
-      </label>
-      <label>
-        <span>Artist</span>
-        <select id="plex-artist"></select>
-      </label>
-      <label>
-        <span>Album</span>
-        <select id="plex-album"></select>
-      </label>
-      <label>
-        <span>Playlist</span>
-        <select id="plex-playlist"></select>
-      </label>
-      <label class="inline-check">
-        <input type="checkbox" id="plex-shuffle">
-        <span>Shuffle</span>
-      </label>
-      <div class="plex-actions">
-        <button type="button" class="ghost" id="plex-load">Load</button>
-        <button type="submit" class="primary">Save</button>
-        <button type="button" class="primary" id="plex-play">Save & Play</button>
+    <section class="hero" id="hero">
+      <div class="hero-backdrop" id="np-backdrop" aria-hidden="true"></div>
+      <div class="hero-content">
+        <div class="cover" id="np-art" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <div class="eyebrow" id="np-source">Plex Radio</div>
+          <h2 id="np-title">Nothing playing</h2>
+          <p id="np-artist"></p>
+          <div class="progress">
+            <div class="bar"><div class="fill" id="np-fill"></div></div>
+            <div class="times"><span id="np-pos">0:00</span><span id="np-dur">0:00</span></div>
+          </div>
+        </div>
+        <div class="transport" aria-label="Playback controls">
+          <button class="round-btn" id="t-prev" type="button" aria-label="Previous" title="Previous">
+            <span aria-hidden="true">&#9664;&#9664;</span>
+          </button>
+          <button class="round-btn primary" id="t-play" type="button" aria-label="Play" title="Play / pause">
+            <span id="t-play-icon" aria-hidden="true">&#9654;</span>
+          </button>
+          <button class="round-btn" id="t-next" type="button" aria-label="Next" title="Next">
+            <span aria-hidden="true">&#9654;&#9654;</span>
+          </button>
+        </div>
       </div>
-      <div class="muted plex-status" id="plex-status"></div>
-    </form>
-  </section>
+    </section>
 
-  <section class="card">
-    <h2>Output</h2>
-    <label class="slider">
-      <span>Volume</span>
-      <input type="range" id="vol" min="0" max="1" step="0.01">
-      <output id="vol-out">100%</output>
-    </label>
-  </section>
-</main>
+    <main>
+      <section class="panel status-panel">
+        <div>
+          <h2>Radio</h2>
+          <p id="radio-summary">waiting for bridge state</p>
+        </div>
+        <div class="metrics">
+          <div><span>Source</span><strong id="metric-source">-</strong></div>
+          <div><span>Buffer</span><strong id="metric-buffer">-</strong></div>
+          <div><span>Mode</span><strong id="metric-mode">-</strong></div>
+        </div>
+      </section>
 
-<footer class="license" id="license">
-  <p>Based on FH6 Universal Radio by g0ldyy. GPLv3 licensed. See LICENSE, NOTICE, and SOURCE_CODE.</p>
-</footer>
+      <section class="panel" id="plex-card" hidden>
+        <div class="panel-head">
+          <div>
+            <h2>Plex</h2>
+            <p id="plex-status">disabled</p>
+          </div>
+          <button class="text-btn" id="plex-load" type="button">Load</button>
+        </div>
 
-<aside class="drawer" id="drawer" aria-hidden="true">
-  <div class="drawer-head">
-    <h2>Settings</h2>
-    <button class="ghost" id="close-settings" aria-label="Close">✕</button>
-  </div>
-  <form id="settings-form" class="drawer-body"></form>
-  <div class="drawer-foot">
-    <button class="ghost" id="reload-config">Reload from disk</button>
-    <button class="primary" id="save-config">Save</button>
-  </div>
-</aside>
-<div class="scrim" id="scrim" hidden></div>
+        <form id="plex-config" class="plex-grid">
+          <label>
+            <span>Server</span>
+            <input type="text" id="plex-server" placeholder="https://your-plex.example.com" autocomplete="off">
+          </label>
+          <label>
+            <span>Token</span>
+            <input type="password" id="plex-token" autocomplete="off">
+          </label>
+          <label>
+            <span>Library</span>
+            <select id="plex-library"></select>
+          </label>
+          <label>
+            <span>Artist</span>
+            <select id="plex-artist"></select>
+          </label>
+          <label>
+            <span>Album</span>
+            <select id="plex-album"></select>
+          </label>
+          <label>
+            <span>Playlist</span>
+            <select id="plex-playlist"></select>
+          </label>
+          <label class="inline-check">
+            <input type="checkbox" id="plex-shuffle">
+            <span>Shuffle</span>
+          </label>
+          <div class="plex-actions">
+            <button class="text-btn" type="submit">Save</button>
+            <button class="text-btn primary" id="plex-play" type="button">Save &amp; Play</button>
+          </div>
+        </form>
+      </section>
 
-<script src="app.js" type="module"></script>
-</body>
+      <section class="panel">
+        <h2>Output</h2>
+        <label class="slider">
+          <span>Volume</span>
+          <input type="range" id="vol" min="0" max="1" step="0.01">
+          <output id="vol-out">100%</output>
+        </label>
+      </section>
+    </main>
+
+    <footer class="license">
+      <p>Based on FH6 Universal Radio by g0ldyy. GPLv3 licensed. See LICENSE, NOTICE, and SOURCE_CODE.</p>
+    </footer>
+
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <h2>Settings</h2>
+        <button class="icon-btn" id="close-settings" type="button" aria-label="Close settings" title="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <form id="settings-form" class="drawer-body"></form>
+      <div class="drawer-foot">
+        <button class="text-btn" id="reload-config" type="button">Reload from disk</button>
+        <button class="text-btn primary" id="save-config" type="button">Save</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <script src="app.js" type="module"></script>
+  </body>
 </html>
