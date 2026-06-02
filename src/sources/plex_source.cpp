@@ -16,6 +16,7 @@
 #include <fstream>
 #include <random>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace fh6::sources {
@@ -102,6 +103,19 @@ std::string add_token_query(std::string url, std::string_view token) {
 std::string url_for_path(const PlexConfig& cfg, const std::string& path, bool include_token) {
     std::string url = starts_with_http(path) ? path : normalize_server_url(cfg.server_url) + path;
     return include_token ? add_token_query(std::move(url), cfg.token) : url;
+}
+
+std::string add_query_arg(std::string path, std::string_view key, std::string_view value) {
+    path += (path.find('?') == std::string::npos) ? '?' : '&';
+    path += key;
+    path += '=';
+    path += value;
+    return path;
+}
+
+std::string paged_container_path(std::string path, std::size_t start, std::size_t size) {
+    path = add_query_arg(std::move(path), "X-Plex-Container-Start", std::to_string(start));
+    return add_query_arg(std::move(path), "X-Plex-Container-Size", std::to_string(size));
 }
 
 HANDLE open_nul(DWORD access) {
@@ -347,7 +361,7 @@ HttpResult winhttp_get(const PlexConfig& cfg, std::string path) {
         out.error = "WinHttpOpen failed: " + win32_message(GetLastError());
         return out;
     }
-    WinHttpSetTimeouts(session, 5000, 5000, 8000, 12000);
+    WinHttpSetTimeouts(session, 5000, 5000, 10000, 30000);
 
     InternetHandle conn{WinHttpConnect(session, host_name.c_str(), uc.nPort, 0)};
     if (!conn.h) {
@@ -985,18 +999,60 @@ bool PlexSource::refresh_albums_locked() {
 
 bool PlexSource::append_tracks_from_path_locked(const std::string& path, std::vector<PlexTrack>& out,
                                                 std::string& error) {
-    json root;
-    if (!parse_json_response(winhttp_get(cfg_, path), root, error)) return false;
+    constexpr std::size_t kPageSize = 250;
+    constexpr std::size_t kMaxPages = 20000;
 
-    const json* mc = media_container(root);
-    for_each_child(*mc, "Metadata", [&](const json& item) {
-        PlexTrack t = parse_track(cfg_, item);
-        if (!t.part_key.empty()) out.push_back(std::move(t));
-    });
-    for_each_child(*mc, "Track", [&](const json& item) {
-        PlexTrack t = parse_track(cfg_, item);
-        if (!t.part_key.empty()) out.push_back(std::move(t));
-    });
+    std::unordered_set<std::string> seen_parts;
+    seen_parts.reserve(out.size() + kPageSize);
+    for (const auto& t : out) {
+        if (!t.part_key.empty()) seen_parts.insert(t.part_key);
+    }
+
+    const auto initial_count = out.size();
+    std::size_t start = 0;
+    std::size_t pages = 0;
+    for (;;) {
+        json root;
+        const auto page_path = paged_container_path(path, start, kPageSize);
+        if (!parse_json_response(winhttp_get(cfg_, page_path), root, error)) return false;
+
+        const json* mc = media_container(root);
+        const auto before_page = out.size();
+        auto add_track = [&](const json& item) {
+            PlexTrack t = parse_track(cfg_, item);
+            if (t.part_key.empty()) return;
+            if (!seen_parts.insert(t.part_key).second) return;
+            out.push_back(std::move(t));
+        };
+        for_each_child(*mc, "Metadata", add_track);
+        for_each_child(*mc, "Track", add_track);
+
+        ++pages;
+        const auto page_tracks = out.size() - before_page;
+        const int container_size = get_int(*mc, "size");
+        const int total_size = get_int(*mc, "totalSize");
+        const std::size_t returned = container_size > 0
+                                         ? static_cast<std::size_t>(container_size)
+                                         : page_tracks;
+
+        if (pages == 1 && total_size > static_cast<int>(kPageSize)) {
+            log::info("[plex] loading large catalog: {} item(s) in pages of {}", total_size,
+                      kPageSize);
+        }
+        if (total_size > 0 && start + returned >= static_cast<std::size_t>(total_size)) break;
+        if (returned < kPageSize) break;
+        if (page_tracks == 0) break;
+        if (pages >= kMaxPages) {
+            error = "Plex catalog paging exceeded the safety limit";
+            return false;
+        }
+        start += returned;
+    }
+
+    if (pages > 1) {
+        log::info("[plex] loaded {} track(s) from Plex catalog in {} page(s)",
+                  out.size() - initial_count, pages);
+    }
     return true;
 }
 
