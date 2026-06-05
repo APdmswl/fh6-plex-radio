@@ -11,10 +11,10 @@ Modified project:
 FH6 Plex Radio
 
 Modified version:
-v0.1.4
+v0.1.5
 
 Modification date:
-2026-06-02
+2026-06-06
 
 Summary of modifications:
 - Focused the dashboard and runtime configuration on Plex playback.
@@ -53,5 +53,13 @@ Summary of modifications:
   defaults, while keeping the visible dashboard Plex-focused.
 - Added paged Plex track catalog loading and a longer JSON receive timeout to
   avoid WinHTTP timeouts on very large music libraries.
+- Re-pinned in-game radio metadata after FH6 overwrites the HUD strings during
+  free driving, race transitions, or station state refreshes.
+- Synced the latest upstream radio-stall timer catch-up while preserving the
+  Plex-focused runtime and dashboard.
+- Moved Plex ffmpeg process-spawn helpers into a shared subprocess module with
+  safer PATH refresh and child-process launch behavior.
+- Improved dashboard select styling with a custom arrow, hover state, and
+  dark option colors.
 
 No warranty is provided. See LICENSE for the full GPLv3 terms.

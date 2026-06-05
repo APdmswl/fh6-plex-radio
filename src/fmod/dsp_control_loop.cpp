@@ -82,10 +82,11 @@ void ControlLoop::run(const std::stop_token& tok) {
 
     auto next = std::chrono::steady_clock::now();
     while (!tok.stop_requested()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (next < now) next = now;
         next += kTick;
         bridge_.retarget_if_needed();
         bridge_.manager().pump_once();
-        const auto now = std::chrono::steady_clock::now();
 
         if (++meta_tick >= kMetaEveryNTicks) {
             meta_tick = 0;

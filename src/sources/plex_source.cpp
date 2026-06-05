@@ -1,5 +1,6 @@
 #include "fh6/sources/plex_source.hpp"
 #include "fh6/log.hpp"
+#include "fh6/subprocess.hpp"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -24,37 +25,16 @@ namespace fh6::sources {
 namespace {
 
 using json = nlohmann::json;
+using fh6::subprocess::create_kill_on_close_job;
+using fh6::subprocess::narrow;
+using fh6::subprocess::open_nul;
+using fh6::subprocess::open_stderr_log;
+using fh6::subprocess::quote;
+using fh6::subprocess::spawn_in_job;
+using fh6::subprocess::stderr_log_path;
+using fh6::subprocess::widen;
 
 constexpr std::uint64_t kPcmBytesPerSec = 48000ull * 2ull * 2ull;
-
-std::wstring widen(std::string_view s) {
-    if (s.empty()) return {};
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
-    std::wstring out(n, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), out.data(), n);
-    return out;
-}
-
-std::string narrow(std::wstring_view ws) {
-    if (ws.empty()) return {};
-    int n = WideCharToMultiByte(CP_UTF8, 0, ws.data(), (int)ws.size(), nullptr, 0,
-                                nullptr, nullptr);
-    std::string out(n, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws.data(), (int)ws.size(), out.data(), n, nullptr, nullptr);
-    return out;
-}
-
-std::wstring quote(const std::wstring& s) {
-    if (s.empty()) return L"\"\"";
-    if (s.find_first_of(L" \t\"") == std::wstring::npos) return s;
-    std::wstring out{L"\""};
-    for (auto c : s) {
-        if (c == L'"') out += L'\\';
-        out += c;
-    }
-    out += L'"';
-    return out;
-}
 
 std::string trim(std::string s) {
     auto is_ws = [](unsigned char c) { return std::isspace(c) != 0; };
@@ -116,26 +96,6 @@ std::string add_query_arg(std::string path, std::string_view key, std::string_vi
 std::string paged_container_path(std::string path, std::size_t start, std::size_t size) {
     path = add_query_arg(std::move(path), "X-Plex-Container-Start", std::to_string(start));
     return add_query_arg(std::move(path), "X-Plex-Container-Size", std::to_string(size));
-}
-
-HANDLE open_nul(DWORD access) {
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    HANDLE h = CreateFileW(L"NUL", access, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING,
-                           0, nullptr);
-    return h == INVALID_HANDLE_VALUE ? nullptr : h;
-}
-
-HANDLE open_stderr_log() {
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    auto path = std::filesystem::temp_directory_path() / "fh6-plex-stderr.log";
-    HANDLE h  = CreateFileW(path.wstring().c_str(), FILE_APPEND_DATA | SYNCHRONIZE,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa, OPEN_ALWAYS,
-                            FILE_ATTRIBUTE_NORMAL, nullptr);
-    return h == INVALID_HANDLE_VALUE ? open_nul(GENERIC_WRITE) : h;
-}
-
-std::filesystem::path stderr_log_path() {
-    return std::filesystem::temp_directory_path() / "fh6-plex-stderr.log";
 }
 
 std::string win32_message(DWORD ec) {
@@ -267,41 +227,6 @@ std::string describe_launch_failure(const std::wstring& bin, DWORD ec, bool from
     }
 
     return win32_error(ec) + " tried=" + narrow(bin) + " resolved=" + where + hint;
-}
-
-HANDLE create_kill_on_close_job() {
-    HANDLE job = CreateJobObjectW(nullptr, nullptr);
-    if (!job) return nullptr;
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
-    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof(info))) {
-        CloseHandle(job);
-        return nullptr;
-    }
-    return job;
-}
-
-HANDLE spawn_in_job(HANDLE job, const std::wstring& cmd, HANDLE stdin_h, HANDLE stdout_h,
-                    HANDLE stderr_h) {
-    STARTUPINFOW si{};
-    si.cb         = sizeof(si);
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdInput  = stdin_h;
-    si.hStdOutput = stdout_h;
-    si.hStdError  = stderr_h;
-
-    PROCESS_INFORMATION pi{};
-    std::wstring mut = cmd;
-    if (!CreateProcessW(nullptr, mut.data(), nullptr, nullptr, TRUE,
-                        CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi))
-        return nullptr;
-    if (job && !AssignProcessToJobObject(job, pi.hProcess)) {
-        log::warn("[plex] AssignProcessToJobObject failed ({}); continuing without job containment",
-                  GetLastError());
-    }
-    ResumeThread(pi.hThread);
-    CloseHandle(pi.hThread);
-    return pi.hProcess;
 }
 
 struct InternetHandle {

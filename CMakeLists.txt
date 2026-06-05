@@ -26,6 +26,7 @@ add_library(version SHARED
     src/config.cpp
     src/config_store.cpp
     src/ring_buffer.cpp
+    src/subprocess.cpp
     src/audio_source_manager.cpp
     src/playback_dsp.cpp
     src/fmod/pe_image.cpp
@@ -48,7 +49,7 @@ target_include_directories(version PRIVATE
     third_party/miniaudio
 )
 
-target_link_libraries(version PRIVATE ws2_32 bcrypt psapi winhttp shell32)
+target_link_libraries(version PRIVATE ws2_32 bcrypt psapi winhttp shell32 advapi32)
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version

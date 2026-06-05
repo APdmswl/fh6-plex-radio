@@ -4,6 +4,8 @@ Forza Horizon 6에서 Plex 음악을 인게임 라디오처럼 들을 수 있게
 
 영어 README: [README.md](README.md)
 
+현재 버전: `v0.1.5`
+
 이 프로젝트는 g0ldyy의 [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)를 기반으로 합니다.
 
 ![FH6 Plex Radio 대시보드](assets/dashboard-redacted.png)
@@ -22,6 +24,8 @@ Forza Horizon 6에서 Plex 음악을 인게임 라디오처럼 들을 수 있게
 ## 상태
 
 아직 실험적인 성격이 있으며, 게임 업데이트 이후 동작하지 않을 수 있습니다. 설치 전 백업을 권장하며, 사용에 따른 책임은 사용자에게 있습니다.
+
+`v0.1.5`는 Plex 중심 대시보드를 유지하면서 원본 프로젝트의 안정성 및 UI 개선 일부를 반영한 버전입니다. 자유주행 중 FH6가 라디오 HUD 문자열을 덮어써도 메타데이터를 다시 고정하고, 라디오 stall 타이머 보정과 Plex ffmpeg 실행 helper 구조 개선을 포함합니다.
 
 ## 설치
 
@@ -57,7 +61,7 @@ Plex 재생은 ffmpeg를 통해 디코딩됩니다. 릴리즈 zip에는 ffmpeg�
 둘 중 하나로 설정하면 됩니다.
 
 - `ffmpeg.exe`가 들어있는 폴더를 Windows `PATH`에 추가
-- 대시보드의 Settings > Plex > ffmpeg path에 전체 경로 입력
+- 대시보드의 Settings > General > ffmpeg path 또는 Settings > Plex > ffmpeg path에 전체 경로 입력
 
 포터블 ffmpeg도 사용할 수 있습니다. 예시:
 

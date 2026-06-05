@@ -2,7 +2,7 @@
 
 Korean README: [README.ko.md](README.ko.md)
 
-Current version: `v0.1.4`
+Current version: `v0.1.5`
 
 Based on [FH6 Universal Radio](https://github.com/g0ldyy/fh6-universal-radio)
 by g0ldyy.
@@ -29,10 +29,10 @@ dashboard for Plex library, artist, album, and playlist playback.
 This is experimental and may break after game updates. Keep a backup of your
 install and use it at your own risk.
 
-`v0.1.4` merges selected upstream runtime improvements while keeping the
-dashboard Plex-focused. It adds a shared ffmpeg path fallback, optional Plex
-loudness normalization, optional 5-band EQ, and more tolerant child-process
-job handling.
+`v0.1.5` keeps the dashboard Plex-focused while pulling in selected upstream
+stability and UI improvements. It re-pins in-game metadata if FH6 overwrites
+the radio HUD while driving, adds upstream stall-timer catch-up, and moves Plex
+ffmpeg process launch helpers into a shared subprocess module.
 
 ## Install
 
